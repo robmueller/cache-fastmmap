@@ -1,0 +1,32 @@
+Cache::FastMmap
+===========================
+
+A shared memory cache through an mmap'ed file. It's core is written
+in C for performance. It uses fcntl locking to ensure multiple
+processes can safely access the cache at the same time. It uses
+a basic LRU algorithm to keep the most used entries in the cache.
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+Storable if you want to store complex structures
+
+AUTHOR
+
+Rob Mueller <cpan@robm.fastmail.fm>
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2003-2010 by The FastMail Partnership
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself. 
+

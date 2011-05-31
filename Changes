@@ -1,0 +1,181 @@
+Revision history for Perl extension Cache::FastMmap.
+
+1.36 Wed Sep 29 13:10 2010
+  - Disable wrapping fcntl() lock call in alarm, hurts
+     people that use Time::HiRes::alarm() only to try
+     and catch buggy deadlock code. Enable with
+     catch_deadlocks option
+
+1.35 Fri Feb 19 12:45 2010
+  - Fix for returning potential bug that returns old stored
+     data. Could occur if you mix deletes
+     (thanks Darrell Bishop)
+
+1.34 Fri Jun 19 12:00 2009
+  - perldoc fix (thanks Jonathan Yu)
+
+1.33 Thu Jun 18 12:00 2009
+  - Update version in META.yml
+
+1.32 Thu Jun 18 11:55 2009
+  - Better LiveCaches tracking via DESTROY
+
+1.31 Thu Jun 18 11:40 2009
+  - when in raw_values => 0 mode, the write_cb is now
+    correctly called with thawed data, rather than the
+    raw frozen data
+  - empty_on_exit correctly called even when a global
+    cache is left at interpreter exit time (required
+    Scalar::Util qw(weaken) for object tracking)
+
+>>>>>>> .r21903
+1.30 Fri May 8  11:10 2009
+  - Fix for Mandriva compiler (thanks Jean-Christian Hassler)
+
+1.29 Fri May 1  17:20 2009
+  - Support for Windows (thanks to Ash & kmx.at.volny.cz)
+    (https://rt.cpan.org/Public/Bug/Display.html?id=45210)
+    (https://rt.cpan.org/Public/Bug/Display.html?id=16501)
+
+1.28 Fri Jun 27 11:05 2008
+  - get_and_set() returns new value + didstore boolean
+     if called in list context
+
+1.27  Wed Jun 18 17:15 2008
+  - Fix non-ansi C code
+  - Remove debug flags
+
+1.26  Thu May 22 14:50 2008
+  - Check for write failure when creating file
+      thanks to Sam Vilain
+  - Check for $ENV{TMP_DIR}
+      thanks to Sam Vilain
+  - Add compress option
+  - Add basic statistics gathering
+
+1.25  Mon Feb 04 13:20 2008
+  - Fix multi_set bug and add test
+    (http://rt.cpan.org/Ticket/Display.html?id=32895)
+  - Test share_file is not a reference
+    (http://rt.cpan.org/Ticket/Display.html?id=32252)
+  - Fix C variable declaration error
+    (http://rt.cpan.org/Ticket/Display.html?id=31223)
+  - Fix compile warnings in FreeBSD
+    (http://rt.cpan.org/Ticket/Display.html?id=31900)
+  - Thanks to all the people that contributed
+     to the above bugs
+
+1.24  Mon Oct 22 13:15 2007
+  - Add atomic get_and_remove() method thanks to
+      Darrell Bishop
+
+1.23  Wed Oct 17 16:00 2007
+  - Fix expire time parsing
+
+1.22  Wed Oct 17 14:05 2007
+  - If third parameter to set() is not a references, treat it as
+    a specify expiry time. Increases compatiability with
+    Cache::Cache API. Helpful for Catalyst framework
+
+1.21  Tue Oct 16 10:40 2007
+  - if first parameter to new() is a hash ref, use it as
+     the options hash. Helpful for Catalyst framework
+
+1.20  Thu Oct 2 13:40 2007
+  - add to documentation about page size and cache file locations
+  - fix t/6.t test failure under new Test::More
+
+1.19  Thu Aug 23 09:03 2007
+  - bad C declaration crept in again, now in svn
+
+1.18  Thu Aug 22 17:30 2007
+  - fix use of $^O not to catch "darwin"
+    (http://rt.cpan.org/Ticket/Display.html?id=28330)
+
+1.17  Thu Aug 22 17:14 2007
+  - fix declaration in C code that wasn't legal C
+
+1.16  Thu May 8 17:12 2007
+  - fix typo in Changes file (1.15 is 2007, not 2006)
+  - fix get_keys(2) when undef values in cache
+  - fix some leak detection tests
+
+1.15  Thu May 8 17:12 2007
+  - catch and rethrow die/exceptions in get_and_set() callbacks
+  - avoid undef warnings when using cache_not_found mode
+  - use unique tempfile name rather than the same every time
+  - add allow_recursive option to allow calls to cache
+    from within a read/write callback sub
+  - add checks to die if we try and lock a cache twice,
+    rather than just causing mysterious errors
+  - add unlink_on_exit to automatically delete the share_file
+    when the cache exits. default to true if we created
+    the share_file, false if we connected to an existing one
+  - make empty_on_exit only call empty if the pid of the
+    process we're cleaning up in is the same as the pid we
+    were created in
+  - die in CLONE, making it clear threads aren't supported
+
+1.14  Thu Oct 20 11:45 2006
+  - alter calc_expunge to allow more efficient alternate
+    implementation cases
+
+1.13  Thu Oct 20 11:15 2006
+  - mention UNIX/Win32 compatiability in docs
+    (http://rt.cpan.org/Ticket/Display.html?id=16501)
+  - detect page corruption better and croak rather than segfault
+    (http://rt.cpan.org/Ticket/Display.html?id=17335)
+  - when running in raw_values => 0 mode, always store
+    reference to data. Storable doesn't like freeze(SCALAR)
+    (http://rt.cpan.org/Ticket/Display.html?id=16762)
+  - Handle edge case of slot count increase when page
+    already nearly full possibly causing corruption
+    (can only happen if ->purge() called at just the wrong time)
+
+1.12  Thu Oct 19 09:50 2006
+  - allow writing into a deleted slot
+
+1.11  Web Oct 18 15:10 2006
+  - allow setting default slot count via start_slots argument
+
+1.10  Web Oct 18 14:50 2006
+  - fc_lock() would segfault if no slots were available.
+    Doesn't happen in normal usage, but can happen if
+    cache behaviour altered by alternate code
+
+1.09  Thu Feb  7 15:50 2005
+  - add get_and_set() routine to allow atomic reading and
+    writing of a cache value (thanks to Sreeji Das)
+  - fix some tests
+
+1.08  Thu Aug 26 12:18 2004
+  - really remove dependency on perl 5.8
+
+1.07  Thu Aug 19 22:18 2004
+  - add extra documentation
+  - add parameter to empty() method
+  - add ability to test integrity of cache file
+  - remove dependency on perl 5.8
+
+1.06  Thu May 10 17:18 2004
+  - add multi_set and multi_get methods
+
+1.05  Sat Jan 31 17:24 2004
+  - fix another edge case where page would get full, but never
+    expunged when storing references
+
+1.04  Sun Jan 25 00:46 2004
+  - fix test file after new changes
+
+1.03  Sun Jan 25 00:21 2004
+  - fix bad sorting when removing old cache entries
+
+1.02  Sat Jan 24 17:05 2004
+  - fix edge case where page would get full, but never expunged
+
+1.01  Sat Dec 13 18:17 2003
+	- fix leak from improper munmap call
+
+1.00  Sat Dec 13 14:19 2003
+	- initial release
+
