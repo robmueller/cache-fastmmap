@@ -668,7 +668,7 @@ sub get {
 
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage);
+  my $Unlock = $Self->_lock_page($HashPage);
   my ($Val, $Flags, $Found) = $Cache->fc_read($HashSlot, $_[1]);
 
   # Value not found, check underlying data store
@@ -676,10 +676,10 @@ sub get {
 
     # Callback to read from underlying data store
     # (unlock page first if we allow recursive calls
-    $Cache->fc_unlock() if $Self->{allow_recursive};
+    $Unlock = undef if $Self->{allow_recursive};
     $Val = eval { $read_cb->($Self->{context}, $_[1]); };
     my $Err = $@;
-    $Cache->fc_lock($HashPage) if $Self->{allow_recursive};
+    $Unlock = $Self->_lock_page($HashPage) if $Self->{allow_recursive};
 
     # Pass on any error
     if ($Err) {
@@ -708,11 +708,15 @@ sub get {
 
   # Unlock page and return any found value
   # Unlock is done only if we're not in the middle of a get_set() operation.
-  $Cache->fc_unlock() unless $_[2] && $_[2]->{skip_unlock};
+  my $SkipUnlock = $_[2] && $_[2]->{skip_unlock};
+  $Unlock = undef unless $SkipUnlock;
 
   # If not using raw values, use thaw() to turn data back into object
   $Val = Compress::Zlib::memGunzip($Val) if defined($Val) && $Self->{compress};
   $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
+
+  # If explicitly asked to skip unlocking, we return the reference to the unlocker
+  return ($Val, $Unlock) if $SkipUnlock;
 
   return $Val;
 }
@@ -743,7 +747,16 @@ sub set {
 
   # Hash value, lock page
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage) unless $Opts && $Opts->{skip_lock};
+
+  # If skip_lock is passed, it's a *reference* to an existing lock we
+  #  have to take and delete so we can cleanup below before calling
+  #  the callback
+  my $Unlock = $Opts && $Opts->{skip_lock};
+  if ($Unlock) {
+    ($Unlock, $$Unlock) = ($$Unlock, undef);
+  } else {
+    $Unlock = $Self->_lock_page($HashPage);
+  }
 
   # Are we doing writeback's? If so, need to mark as dirty in cache
   my $write_back = $Self->{write_back};
@@ -757,7 +770,7 @@ sub set {
   my $DidStore = $Cache->fc_write($HashSlot, $_[1], $Val, $expire_seconds, $write_back ? FC_ISDIRTY : 0);
 
   # Unlock page
-  $Cache->fc_unlock();
+  $Unlock = undef;
 
   # If we're doing write-through, or write-back and didn't get into cache,
   #  write back to the underlying store
@@ -805,8 +818,8 @@ operations lock the page and you may end up with a dead lock!
 
 =item *
 
-If your sub does a die/throws an exception, this will be caught
-to allow the page to be unlocked, and then rethrown (1.15 onwards)
+If your sub does a die/throws an exception, the page will correctly
+be unlocked (1.15 onwards)
 
 =back
 
@@ -814,11 +827,10 @@ to allow the page to be unlocked, and then rethrown (1.15 onwards)
 sub get_and_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  my $Value = $Self->get($_[1], { skip_unlock => 1 });
-  eval { $Value = $_[2]->($_[1], $Value); };
-  my $Err = $@;
-  my $DidStore = $Self->set($_[1], $Value, { skip_lock => 1 });
-  die $Err if $Err;
+  my ($Value, $Unlock) = $Self->get($_[1], { skip_unlock => 1 });
+  # If this throws an error, $Unlock ref will still unlock page
+  $Value = $_[2]->($_[1], $Value);
+  my $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock });
 
   return wantarray ? ($Value, $DidStore) : $Value;
 }
@@ -838,11 +850,18 @@ sub remove {
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
 
-  # Lock is done only if we're not in the middle of a get_and_remove() operation.
-  $Cache->fc_lock($HashPage) unless $_[2] && $_[2]->{skip_lock};
+  # If skip_lock is passed, it's a *reference* to an existing lock we
+  #  have to take and delete so we can cleanup below before calling
+  #  the callback
+  my $Unlock = $_[2] && $_[2]->{skip_lock};
+  if ($Unlock) {
+    ($Unlock, $$Unlock) = ($$Unlock, undef);
+  } else {
+    $Unlock = $Self->_lock_page($HashPage);
+  }
 
   my ($DidDel, $Flags) = $Cache->fc_delete($HashSlot, $_[1]);
-  $Cache->fc_unlock();
+  $Unlock = undef;
 
   # If we deleted from the cache, and it's not dirty, also delete
   #  from underlying store
@@ -866,8 +885,8 @@ isn't removed by us.
 sub get_and_remove {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  my $Value = $Self->get($_[1], { skip_unlock => 1 });
-  my $DidDel = $Self->remove($_[1], { skip_lock => 1 });
+  my ($Value, $Unlock) = $Self->get($_[1], { skip_unlock => 1 });
+  my $DidDel = $Self->remove($_[1], { skip_lock => \$Unlock });
   return wantarray ? ($Value, $DidDel) : $Value;
 }
 
@@ -1158,6 +1177,21 @@ sub _expunge_page {
     }
     eval { $write_cb->($Self->{context}, $_->{key}, $Val, $_->{expire_time}); };
   }
+}
+
+=item I<_lock_page($Page)>
+
+Lock a given page in the cache, and return an object
+reference that when DESTROYed, unlocks the page
+
+=cut
+sub _lock_page {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+  my $Unlock = Cache::FastMmap::OnLeave->new(sub {
+    $Cache->fc_unlock() if $Cache->fc_is_locked();
+  });
+  $Cache->fc_lock(shift);
+  return $Unlock;
 }
 
 sub parse_expire_time {
