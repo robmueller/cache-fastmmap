@@ -193,6 +193,7 @@ char * mmc_error(mmap_cache *);
 int mmc_hash(mmap_cache *, void *, int, MU32 *, MU32 *);
 int mmc_lock(mmap_cache *, MU32);
 int mmc_unlock(mmap_cache *);
+int mmc_is_locked(mmap_cache *);
 
 /* Functions for getting/setting/deleting values in current page */
 int mmc_read(mmap_cache *, MU32, void *, int, void **, int *, MU32 *);

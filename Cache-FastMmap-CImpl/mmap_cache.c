@@ -328,6 +328,18 @@ int mmc_unlock(mmap_cache * cache) {
   return 0;
 }
 
+/*
+ * mmc_is_locked(
+ *   cache_mmap * cache
+ * )
+ *
+ * Return true if page is locked
+ *
+*/
+int mmc_is_locked(mmap_cache * cache) {
+
+  return cache->p_cur != -1 ? 1 : 0;
+}
 
 /*
  * int mmc_hash(
