@@ -28,10 +28,10 @@ our $FC;
 $FC = Cache::FastMmap->new(init_file => 0, raw_values => 1);
 $FC = undef;
 
-TestLeak(\&NewLeak);
-TestLeak(\&NewLeak);
-TestLeak(\&NewLeak2);
-TestLeak(\&NewLeak2);
+TestLeak(\&NewLeak, "new - 1");
+TestLeak(\&NewLeak, "new - 2");
+TestLeak(\&NewLeak2, "new2 - 1");
+TestLeak(\&NewLeak2, "new2 - 2");
 
 $FC = Cache::FastMmap->new(
   init_file => 1,
@@ -56,15 +56,15 @@ our $Key = "blah100000blah";
 our $Val = "\x{263A}" . RandStr(17);
 
 our $StartKey = 1;
-TestLeak(\&SetLeak);
+TestLeak(\&SetLeak, "set");
 
 $StartKey = 1;
-TestLeak(\&GetLeak);
+TestLeak(\&GetLeak, "get");
 
 $FC->clear();
 
 $StartKey = 1;
-TestLeak(\&SetLeak);
+TestLeak(\&SetLeak, "set2");
 
 our (@a, @b, @c);
 @a = $FC->get_keys(0);
@@ -73,7 +73,7 @@ our (@a, @b, @c);
 @a = @b = @c = ();
 
 ListLeak();
-TestLeak(\&ListLeak);
+TestLeak(\&ListLeak, "list");
 
 sub RandStr {
   return join '', map { chr(ord('a') + rand(26)) } (1 .. $_[0]);
@@ -81,6 +81,7 @@ sub RandStr {
 
 sub TestLeak {
   my $Sub = shift;
+  my $Test = shift;
 
   my $Before = $GTop->proc_mem($$)->size;
   eval {
@@ -92,7 +93,7 @@ sub TestLeak {
   my $After = $GTop->proc_mem($$)->size;
 
   my $Extra = ($After - $Before)/1024;
-  ok( $Extra < 30, "leak test $Extra > 30k");
+  ok( $Extra < 30, "leak test $Extra > 30k - $Test");
 }
 
 sub NewLeak {
