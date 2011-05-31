@@ -1165,7 +1165,7 @@ sub parse_expire_time {
   return 1 if $expire_time eq 'now';
   return 0 if $expire_time eq 'never';
   my %Times = ('' => 1, s => 1, m => 60, h => 60*60, d => 24*60*60, w => 7*24*60*60);
-  return $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{$2} : 0;
+  return $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{lc($2)} : 0;
 }
 
 sub cleanup {
