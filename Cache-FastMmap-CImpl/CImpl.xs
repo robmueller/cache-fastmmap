@@ -9,6 +9,23 @@
 #define FC_UTF8KEY (1<<30)
 #define FC_UNDEF (1<<29)
 
+#define FC_ENTRY \
+    mmap_cache * cache; \
+    if (!SvROK(obj)) { \
+      croak("Object not reference"); \
+      XSRETURN_UNDEF; \
+    } \
+    obj = SvRV(obj); \
+    if (!SvIOKp(obj)) { \
+      croak("Object not initiliased correctly"); \
+      XSRETURN_UNDEF; \
+    } \
+    cache = INT2PTR(mmap_cache *, SvIV(obj) ); \
+    if (!cache) { \
+      croak("Object not created correctly"); \
+      XSRETURN_UNDEF; \
+    }
+
 
 MODULE = Cache::FastMmap::CImpl		PACKAGE = Cache::FastMmap::CImpl		
 PROTOTYPES: ENABLE
@@ -37,21 +54,7 @@ fc_set_param(obj, param, val)
     char * param;
     char * val;
   INIT:
-    mmap_cache * cache;
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj) );
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   CODE:
     RETVAL = mmc_set_param(cache, param, val);
@@ -64,21 +67,7 @@ NO_OUTPUT int
 fc_init(obj)
     SV * obj;
   INIT:
-    mmap_cache * cache;
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   CODE:
     RETVAL = mmc_init(cache);
@@ -92,21 +81,7 @@ void
 fc_close(obj)
     SV * obj
   INIT:
-    mmap_cache * cache;
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   CODE:
     mmc_close(cache);
@@ -118,26 +93,12 @@ fc_hash(obj, key);
     SV * obj;
     SV * key;
   INIT:
-    mmap_cache * cache;
     int key_len;
     void * key_ptr;
     MU32 hash_page, hash_slot;
     STRLEN pl_key_len;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   PPCODE:
 
@@ -157,22 +118,7 @@ fc_lock(obj, page);
     SV * obj;
     UV page;
   INIT:
-    mmap_cache * cache;
-
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   CODE:
     RETVAL = mmc_lock(cache, (MU32)page);
@@ -186,22 +132,7 @@ NO_OUTPUT int
 fc_unlock(obj);
     SV * obj;
   INIT:
-    mmap_cache * cache;
-
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   CODE:
     RETVAL = mmc_unlock(cache);
@@ -210,6 +141,18 @@ fc_unlock(obj);
       croak("%s", mmc_error(cache));
     }
 
+int
+fc_is_locked(obj)
+    SV * obj;
+  INIT:
+    FC_ENTRY
+
+  CODE:
+    /* Write value to cache */
+    RETVAL = mmc_is_locked(cache);
+
+  OUTPUT:
+    RETVAL
 
 
 void
@@ -218,28 +161,13 @@ fc_read(obj, hash_slot, key)
     U32  hash_slot;
     SV * key;
   INIT:
-    mmap_cache * cache;
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
     MU32 flags = 0;
     STRLEN pl_key_len;
     SV * val;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
-
+    FC_ENTRY
 
   PPCODE:
 
@@ -287,26 +215,11 @@ fc_write(obj, hash_slot, key, val, expire_seconds, in_flags)
     U32 expire_seconds;
     U32 in_flags;
   INIT:
-    mmap_cache * cache;
     int key_len, val_len;
     void * key_ptr, * val_ptr;
     STRLEN pl_key_len, pl_val_len;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
-
+    FC_ENTRY
 
   CODE:
 
@@ -348,27 +261,12 @@ fc_delete(obj, hash_slot, key)
     U32  hash_slot;
     SV * key;
   INIT:
-    mmap_cache * cache;
     MU32 out_flags;
     int key_len, did_delete;
     void * key_ptr;
     STRLEN pl_key_len;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
-
+    FC_ENTRY
 
   PPCODE:
 
@@ -387,24 +285,9 @@ void
 fc_get_page_details(obj)
     SV * obj;
   INIT:
-    mmap_cache * cache;
     MU32 nreads = 0, nreadhits = 0;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
-
+    FC_ENTRY
 
   PPCODE:
     mmc_get_page_details(cache, &nreads, &nreadhits);
@@ -417,24 +300,9 @@ NO_OUTPUT void
 fc_reset_page_details(obj)
     SV * obj;
   INIT:
-    mmap_cache * cache;
     MU32 nreads = 0, nreadhits = 0;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
-
+    FC_ENTRY
 
   CODE:
     mmc_reset_page_details(cache);
@@ -448,7 +316,6 @@ fc_expunge(obj, mode, wb, len)
     int wb;
     int len;
   INIT:
-    mmap_cache * cache;
     MU32 new_num_slots = 0, ** to_expunge = 0;
     int num_expunge, item;
 
@@ -456,20 +323,7 @@ fc_expunge(obj, mode, wb, len)
     int key_len, val_len;
     MU32 last_access, expire_time, flags;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   PPCODE:
 
@@ -530,27 +384,13 @@ fc_get_keys(obj, mode)
     SV * obj;
     int mode;
   INIT:
-    mmap_cache * cache;
     mmap_cache_it * it;
     MU32 * entry_ptr;
     void * key_ptr, * val_ptr;
     int key_len, val_len;
     MU32 last_access, expire_time, flags;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   PPCODE:
 
@@ -616,28 +456,13 @@ fc_get(obj, key)
     SV * obj;
     SV * key;
   INIT:
-    mmap_cache * cache;
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
     MU32 hash_page, hash_slot, flags;
     STRLEN pl_key_len;
     SV * val;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
-
+    FC_ENTRY
 
   CODE:
 
@@ -675,26 +500,12 @@ fc_set(obj, key, val)
     SV * key;
     SV * val;
   INIT:
-    mmap_cache * cache = INT2PTR(mmap_cache *, SvIV(SvRV(obj)));
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
     MU32 hash_page, hash_slot, flags = 0;
     STRLEN pl_key_len, pl_val_len;
 
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   CODE:
 
@@ -722,22 +533,7 @@ NO_OUTPUT void
 fc_dump_page(obj);
     SV * obj;
   INIT:
-    mmap_cache * cache;
-
-    if (!SvROK(obj)) {
-      croak("Object not reference");
-      XSRETURN_UNDEF;
-    }
-    obj = SvRV(obj);
-    if (!SvIOKp(obj)) {
-      croak("Object not initiliased correctly");
-      XSRETURN_UNDEF;
-    }
-    cache = INT2PTR(mmap_cache *, SvIV(obj));
-    if (!cache) {
-      croak("Object not created correctly");
-      XSRETURN_UNDEF;
-    }
+    FC_ENTRY
 
   CODE:
     _mmc_dump_page(cache);
