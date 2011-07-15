@@ -8,3 +8,4 @@ Cache/FastMmap/CImpl.c
 Cache/FastMmap/CImpl.o
 Cache/FastMmap/mmap_cache.o
 Cache/FastMmap/unix.o
+.shipit
