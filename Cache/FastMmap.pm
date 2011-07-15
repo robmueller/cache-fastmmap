@@ -293,7 +293,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.36';
+our $VERSION = '1.37';
 
 # Track currently live caches so we can cleanup in END {}
 #  if we have empty_on_exit set
