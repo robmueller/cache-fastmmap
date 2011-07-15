@@ -255,7 +255,7 @@ two main ways to do this:
 
 Create the cache in the parent process, and then when it forks, each
 child will inherit the same file descriptor, mmap'ed memory, etc and
-just work. This is the recommended way. (BEWARE: This works just under
+just work. This is the recommended way. (BEWARE: This only works under
 UNIX as Win32 has no concept of forking)
 
 =item *
@@ -1249,6 +1249,8 @@ __END__
 
 =back
 
+=cut
+
 =head1 INCOMPATIBLE CHANGES
 
 =over 4
@@ -1276,6 +1278,8 @@ won't be.
 
 Otherwise the defaults seem sensible to cleanup unneeded share files rather than
 leaving them around to accumulate.
+
+=back
 
 =item * From 1.29
 
@@ -1324,7 +1328,7 @@ option passed to new.
 
 =back
 
-=back
+=cut
 
 =head1 SEE ALSO
 
@@ -1335,13 +1339,17 @@ Latest news/details can also be found at:
 
 L<http://cpan.robm.fastmail.fm/cachefastmmap/>
 
+=cut
+
 =head1 AUTHOR
 
 Rob Mueller L<mailto:cpan@robm.fastmail.fm>
 
+=cut
+
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2010 by The FastMail Partnership
+Copyright (C) 2003-2011 by Opera Software Australia Pty Ltd
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
