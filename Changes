@@ -1,5 +1,10 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.37 Fri Jul 15 16:30 2011
+  - Use a lock object with DESTROY method to avoid
+     an alarm with a die leaving around a locked
+     paged
+
 1.36 Wed Sep 29 13:10 2010
   - Disable wrapping fcntl() lock call in alarm, hurts
      people that use Time::HiRes::alarm() only to try
@@ -28,7 +33,6 @@ Revision history for Perl extension Cache::FastMmap.
     cache is left at interpreter exit time (required
     Scalar::Util qw(weaken) for object tracking)
 
->>>>>>> .r21903
 1.30 Fri May 8  11:10 2009
   - Fix for Mandriva compiler (thanks Jean-Christian Hassler)
 
