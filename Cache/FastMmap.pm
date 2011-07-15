@@ -1339,6 +1339,10 @@ Latest news/details can also be found at:
 
 L<http://cpan.robm.fastmail.fm/cachefastmmap/>
 
+Available on github at:
+
+L<https://github.com/robmueller/cache-fastmmap/>
+
 =cut
 
 =head1 AUTHOR
