@@ -6,6 +6,7 @@ Cache/FastMmap/mmap_cache.c
 Cache/FastMmap/mmap_cache.h
 Cache/FastMmap/mmap_cache_internals.h
 Cache/FastMmap/mmap_cache_test.c
+Cache/FastMmap/OnLeave.pm
 Cache/FastMmap/ppport.h
 Cache/FastMmap/README
 Cache/FastMmap/unix.c
@@ -13,6 +14,7 @@ Cache/FastMmap/win32.c
 Changes
 Makefile.PL
 MANIFEST			This list of files
+MANIFEST.SKIP
 META.yml
 README
 t/1.t
