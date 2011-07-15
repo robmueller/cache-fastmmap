@@ -36,9 +36,11 @@ __END__
 
 Rob Mueller E<lt>cpan@robm.fastmail.fmE<gt>
 
+=cut
+
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2010 by The FastMail Partnership
+Copyright (C) 2003-2011 by Opera Software Australia Pty Ltd
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
