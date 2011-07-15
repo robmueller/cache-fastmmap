@@ -1,6 +1,8 @@
 Makefile
+Makefile.old
 blib/
 pm_to_blib
+Cache/FastMmap/Makefile.old
 Cache/FastMmap/CImpl.bs
 Cache/FastMmap/CImpl.c
 Cache/FastMmap/CImpl.o
