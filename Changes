@@ -1,5 +1,11 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.39 Mon Jul 18 09:50 2011
+  - Remove CImpl and simplify structure into just
+     Cache::FastMmap module making all XS calls
+     just function calls in Cache::FastMmap
+     namespace
+
 1.38 Sun Jul 17 18:30 2011
   - Fix build process that was completely broken
      after moving files around into different
