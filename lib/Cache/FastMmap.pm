@@ -990,12 +990,12 @@ sub get_statistics {
 
   my ($NReads, $NReadHits) = (0, 0);
   for (0 .. $Self->{num_pages}-1) {
-    fc_lock($Cache, $_);
+    my $Unlock = $Self->_lock_page($_);
     my ($PNReads, $PNReadHits) = fc_get_page_details($Cache);
     $NReads += $PNReads;
     $NReadHits += $PNReadHits;
     fc_reset_page_details($Cache) if $Clear;
-    fc_unlock($Cache);
+    $Unlock = undef;
   }
   return ($NReads, $NReadHits);
 }
@@ -1043,7 +1043,7 @@ sub multi_get {
 
   # Hash value page key, lock page
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  fc_lock($Cache, $HashPage);
+  my $Unlock = $Self->_lock_page($HashPage);
 
   # For each key to find
   my ($Keys, %KVs) = ($_[2]);
@@ -1064,7 +1064,7 @@ sub multi_get {
   }
 
   # Unlock page and return any found value
-  fc_unlock($Cache);
+  $Unlock = undef;
 
   return \%KVs;
 }
@@ -1083,7 +1083,7 @@ sub multi_set {
 
   # Hash page key value, lock page
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  fc_lock($Cache, $HashPage);
+  my $Unlock = $Self->_lock_page($HashPage);
 
   # Loop over each key/value storing into this page
   my $KVs = $_[2];
@@ -1105,7 +1105,7 @@ sub multi_set {
   }
 
   # Unlock page
-  fc_unlock($Cache);
+  $Unlock = undef;
 
   return 1;
 }
@@ -1133,9 +1133,9 @@ sub _expunge_all {
 
   # Repeat expunge for each page
   for (0 .. $Self->{num_pages}-1) {
-    fc_lock($Cache, $_);
+    my $Unlock = $Self->_lock_page($_);
     $Self->_expunge_page($Mode, $WB, -1);
-    fc_unlock($Cache);
+    $Unlock = undef;
   }
 
 }
