@@ -1,16 +1,14 @@
-Cache/FastMmap.pm
-Cache/FastMmap/CImpl.pm
-Cache/FastMmap/CImpl.xs
-Cache/FastMmap/Makefile.PL
-Cache/FastMmap/mmap_cache.c
-Cache/FastMmap/mmap_cache.h
-Cache/FastMmap/mmap_cache_internals.h
-Cache/FastMmap/mmap_cache_test.c
-Cache/FastMmap/OnLeave.pm
-Cache/FastMmap/ppport.h
-Cache/FastMmap/README
-Cache/FastMmap/unix.c
-Cache/FastMmap/win32.c
+lib/Cache/FastMmap.pm
+lib/Cache/FastMmap/CImpl.pm
+lib/Cache/FastMmap/OnLeave.pm
+CImpl.xs
+mmap_cache.c
+mmap_cache.h
+mmap_cache_internals.h
+mmap_cache_test.c
+ppport.h
+unix.c
+win32.c
 Changes
 Makefile.PL
 MANIFEST			This list of files

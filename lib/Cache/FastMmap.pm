@@ -300,6 +300,7 @@ our $VERSION = '1.37';
 our %LiveCaches;
 
 use Cache::FastMmap::CImpl;
+use Cache::FastMmap::OnLeave;
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -1190,7 +1191,7 @@ sub _lock_page {
   my $Unlock = Cache::FastMmap::OnLeave->new(sub {
     $Cache->fc_unlock() if $Cache->fc_is_locked();
   });
-  $Cache->fc_lock(shift);
+  $Cache->fc_lock($_[1]);
   return $Unlock;
 }
 

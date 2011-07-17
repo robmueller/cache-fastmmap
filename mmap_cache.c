@@ -244,6 +244,10 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   MU32 p_offset;
   void * p_ptr;
 
+  /* Argument sanity check */
+  if (p_cur > cache->c_num_pages)
+    return -1 + _mmc_set_error(cache, 0, "page %u is larger than number of pages", p_cur);
+
   /* Check not already locked */
   if (cache->p_cur != -1)
     return -1 + _mmc_set_error(cache, 0, "page %u is already locked, can't lock multiple pages", cache->p_cur);
