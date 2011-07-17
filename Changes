@@ -1,5 +1,10 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.38 Sun Jul 17 18:30 2011
+  - Fix build process that was completely broken
+     after moving files around into different
+     directories
+
 1.37 Fri Jul 15 16:30 2011
   - Use a lock object with DESTROY method to avoid
      an alarm with a die leaving around a locked
