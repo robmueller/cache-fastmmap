@@ -11,14 +11,7 @@ WriteMakefile(
     },
     'LIBS'          => [''],
     'INC'           => '-I.',
-    'OBJECT'        => 'CImpl.o mmap_cache.o ' . ($^O eq 'MSWin32' ? 'win32.o' : 'unix.o'),
+    'OBJECT'        => 'FastMmap.o mmap_cache.o ' . ($^O eq 'MSWin32' ? 'win32.o' : 'unix.o'),
 #	    'OPTIMIZE' => '-g -DDEBUG -ansi -pedantic',
 );
 
-package MY;
-
-sub constants {
-  $_[0]->{DLBASE} = "CImpl";
-  $_[0]->{FULLEXT} = "Cache/FastMmap/CImpl";
-  return shift->SUPER::constants();
-}

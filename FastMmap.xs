@@ -27,7 +27,7 @@
     }
 
 
-MODULE = Cache::FastMmap::CImpl		PACKAGE = Cache::FastMmap::CImpl		
+MODULE = Cache::FastMmap		PACKAGE = Cache::FastMmap
 PROTOTYPES: ENABLE
 
 SV *

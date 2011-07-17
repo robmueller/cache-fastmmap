@@ -1,7 +1,5 @@
 lib/Cache/FastMmap.pm
-lib/Cache/FastMmap/CImpl.pm
-lib/Cache/FastMmap/OnLeave.pm
-CImpl.xs
+FastMmap.xs
 mmap_cache.c
 mmap_cache.h
 mmap_cache_internals.h

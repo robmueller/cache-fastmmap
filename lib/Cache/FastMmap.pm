@@ -295,12 +295,12 @@ use bytes;
 
 our $VERSION = '1.38';
 
+require XSLoader;
+XSLoader::load('Cache::FastMmap', $VERSION);
+
 # Track currently live caches so we can cleanup in END {}
 #  if we have empty_on_exit set
 our %LiveCaches;
-
-use Cache::FastMmap::CImpl;
-use Cache::FastMmap::OnLeave;
 
 use constant FC_ISDIRTY => 1;
 # }}}
@@ -620,29 +620,24 @@ sub new {
   $Self->{pid} = $$;
 
   # Initialise C cache code
-  my $Cache = Cache::FastMmap::CImpl::fc_new();
-
-  # We bless the returned scalar ref into the same namespace,
-  #  and store it in our own hash ref. We have to be sure
-  #  that we only call C functions on this scalar ref, and
-  #  only call PERL functions the hash ref we return
-  bless ($Cache, 'Cache::FastMmap::CImpl');
+  my $Cache = fc_new();
 
   $Self->{Cache} = $Cache;
 
   # Setup cache parameters
-  $Cache->fc_set_param('init_file', $init_file);
-  $Cache->fc_set_param('test_file', $test_file);
-  $Cache->fc_set_param('page_size', $page_size);
-  $Cache->fc_set_param('num_pages', $num_pages);
-  $Cache->fc_set_param('expire_time', $expire_time);
-  $Cache->fc_set_param('share_file', $share_file);
-  $Cache->fc_set_param('start_slots', $start_slots);
-  $Cache->fc_set_param('catch_deadlocks', $catch_deadlocks);
-  $Cache->fc_set_param('enable_stats', $enable_stats);
+  fc_set_param($Cache, 'init_file', $init_file);
+  fc_set_param($Cache, 'init_file', $init_file);
+  fc_set_param($Cache, 'test_file', $test_file);
+  fc_set_param($Cache, 'page_size', $page_size);
+  fc_set_param($Cache, 'num_pages', $num_pages);
+  fc_set_param($Cache, 'expire_time', $expire_time);
+  fc_set_param($Cache, 'share_file', $share_file);
+  fc_set_param($Cache, 'start_slots', $start_slots);
+  fc_set_param($Cache, 'catch_deadlocks', $catch_deadlocks);
+  fc_set_param($Cache, 'enable_stats', $enable_stats);
 
   # And initialise it
-  $Cache->fc_init();
+  fc_init($Cache);
 
   # Track cache if need to empty on exit
   weaken($LiveCaches{ref($Self)} = $Self)
@@ -668,9 +663,9 @@ sub get {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
   # Hash value, lock page, read result
-  my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
   my $Unlock = $Self->_lock_page($HashPage);
-  my ($Val, $Flags, $Found) = $Cache->fc_read($HashSlot, $_[1]);
+  my ($Val, $Flags, $Found) = fc_read($Cache, $HashSlot, $_[1]);
 
   # Value not found, check underlying data store
   if (!$Found && (my $read_cb = $Self->{read_cb})) {
@@ -684,7 +679,6 @@ sub get {
 
     # Pass on any error
     if ($Err) {
-      $Cache->fc_unlock();
       die $Err;
     }
 
@@ -703,7 +697,7 @@ sub get {
       my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
       $Self->_expunge_page(2, 1, $KVLen);
 
-      $Cache->fc_write($HashSlot, $_[1], $Val, -1, 0);
+      fc_write($Cache, $HashSlot, $_[1], $Val, -1, 0);
     }
   }
 
@@ -747,7 +741,7 @@ sub set {
   my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
 
   # Hash value, lock page
-  my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
 
   # If skip_lock is passed, it's a *reference* to an existing lock we
   #  have to take and delete so we can cleanup below before calling
@@ -768,7 +762,7 @@ sub set {
   $Self->_expunge_page(2, 1, $KVLen);
 
   # Now store into cache
-  my $DidStore = $Cache->fc_write($HashSlot, $_[1], $Val, $expire_seconds, $write_back ? FC_ISDIRTY : 0);
+  my $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_seconds, $write_back ? FC_ISDIRTY : 0);
 
   # Unlock page
   $Unlock = undef;
@@ -849,7 +843,7 @@ sub remove {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
   # Hash value, lock page, read result
-  my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
 
   # If skip_lock is passed, it's a *reference* to an existing lock we
   #  have to take and delete so we can cleanup below before calling
@@ -861,7 +855,7 @@ sub remove {
     $Unlock = $Self->_lock_page($HashPage);
   }
 
-  my ($DidDel, $Flags) = $Cache->fc_delete($HashSlot, $_[1]);
+  my ($DidDel, $Flags) = fc_delete($Cache, $HashSlot, $_[1]);
   $Unlock = undef;
 
   # If we deleted from the cache, and it's not dirty, also delete
@@ -954,11 +948,11 @@ sub get_keys {
   my $Mode = $_[1] || 0;
   my ($Compress, $RawValues) = @$Self{qw(compress raw_values)};
 
-  return $Cache->fc_get_keys($Mode)
+  return fc_get_keys($Cache, $Mode)
     if $Mode <= 1 || ($Mode == 2 && $RawValues && !$Compress);
 
   # If we're getting values as well, and they're not raw, unfreeze them
-  my @Details = $Cache->fc_get_keys(2);
+  my @Details = fc_get_keys($Cache, 2);
 
   for (@Details) {
     my $Val = $_->{value};
@@ -996,12 +990,12 @@ sub get_statistics {
 
   my ($NReads, $NReadHits) = (0, 0);
   for (0 .. $Self->{num_pages}-1) {
-    $Cache->fc_lock($_);
-    my ($PNReads, $PNReadHits) = $Cache->fc_get_page_details();
+    fc_lock($Cache, $_);
+    my ($PNReads, $PNReadHits) = fc_get_page_details($Cache);
     $NReads += $PNReads;
     $NReadHits += $PNReadHits;
-    $Cache->fc_reset_page_details() if $Clear;
-    $Cache->fc_unlock();
+    fc_reset_page_details($Cache) if $Clear;
+    fc_unlock($Cache);
   }
   return ($NReads, $NReadHits);
 }
@@ -1048,8 +1042,8 @@ sub multi_get {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
   # Hash value page key, lock page
-  my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage);
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
+  fc_lock($Cache, $HashPage);
 
   # For each key to find
   my ($Keys, %KVs) = ($_[2]);
@@ -1057,8 +1051,8 @@ sub multi_get {
 
     # Hash key to get slot in this page and read
     my $FinalKey = "$_[1]-$_";
-    (undef, $HashSlot) = $Cache->fc_hash($FinalKey);
-    my ($Val, $Flags, $Found) = $Cache->fc_read($HashSlot, $FinalKey);
+    (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
+    my ($Val, $Flags, $Found) = fc_read($Cache, $HashSlot, $FinalKey);
     next unless $Found;
 
     # If not using raw values, use thaw() to turn data back into object
@@ -1070,7 +1064,7 @@ sub multi_get {
   }
 
   # Unlock page and return any found value
-  $Cache->fc_unlock();
+  fc_unlock($Cache);
 
   return \%KVs;
 }
@@ -1088,8 +1082,8 @@ sub multi_set {
   my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
 
   # Hash page key value, lock page
-  my ($HashPage, $HashSlot) = $Cache->fc_hash($_[1]);
-  $Cache->fc_lock($HashPage);
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
+  fc_lock($Cache, $HashPage);
 
   # Loop over each key/value storing into this page
   my $KVs = $_[2];
@@ -1106,12 +1100,12 @@ sub multi_set {
     $Self->_expunge_page(2, 1, $KVLen);
 
     # Now hash key and store into page
-    (undef, $HashSlot) = $Cache->fc_hash($FinalKey);
-    my $DidStore = $Cache->fc_write($HashSlot, $FinalKey, $Val, $expire_seconds, 0);
+    (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
+    my $DidStore = fc_write($Cache, $HashSlot, $FinalKey, $Val, $expire_seconds, 0);
   }
 
   # Unlock page
-  $Cache->fc_unlock();
+  fc_unlock($Cache);
 
   return 1;
 }
@@ -1139,9 +1133,9 @@ sub _expunge_all {
 
   # Repeat expunge for each page
   for (0 .. $Self->{num_pages}-1) {
-    $Cache->fc_lock($_);
+    fc_lock($Cache, $_);
     $Self->_expunge_page($Mode, $WB, -1);
-    $Cache->fc_unlock();
+    fc_unlock($Cache);
   }
 
 }
@@ -1161,7 +1155,7 @@ sub _expunge_page {
   # If writeback mode, need to get expunged items to write back
   my $write_cb = $Self->{write_back} && $WB ? $Self->{write_cb} : undef;
 
-  my @WBItems = $Cache->fc_expunge($Mode, $write_cb ? 1 : 0, $Len);
+  my @WBItems = fc_expunge($Cache, $Mode, $write_cb ? 1 : 0, $Len);
 
   my ($Compress, $RawValues) = @$Self{qw(compress raw_values)};
 
@@ -1189,9 +1183,9 @@ reference that when DESTROYed, unlocks the page
 sub _lock_page {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
   my $Unlock = Cache::FastMmap::OnLeave->new(sub {
-    $Cache->fc_unlock() if $Cache->fc_is_locked();
+    fc_unlock($Cache) if fc_is_locked($Cache);
   });
-  $Cache->fc_lock($_[1]);
+  fc_lock($Cache, $_[1]);
   return $Unlock;
 }
 
@@ -1216,7 +1210,7 @@ sub cleanup {
   }
 
   if ($Cache) {
-    # The destructor calls close for us
+    fc_close($Cache);
     $Cache = undef;
     delete $Self->{Cache};
   }
@@ -1242,6 +1236,34 @@ sub END {
 
 sub CLONE {
   die "Cache::FastMmap does not support threads sorry";
+}
+
+1;
+
+package Cache::FastMmap::OnLeave;
+use strict;
+
+sub new {
+  my $Class = shift;
+  my $Ref = \$_[0];
+  bless $Ref, $Class;
+  return $Ref;
+}
+
+sub disable {
+  ${$_[0]} = undef;
+}
+
+sub DESTROY {
+  my $e = $@;  # Save errors from code calling us
+  eval {
+
+  my $Ref = shift;
+  $$Ref->() if $$Ref;
+
+  };
+  # $e .= "        (in cleanup) $@" if $@;
+  $@ = $e;
 }
 
 1;
