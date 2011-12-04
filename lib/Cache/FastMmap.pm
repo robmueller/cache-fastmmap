@@ -293,7 +293,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.39';
+our $VERSION = '1.40';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -707,7 +707,8 @@ sub get {
   $Unlock = undef unless $SkipUnlock;
 
   # If not using raw values, use thaw() to turn data back into object
-  $Val = Compress::Zlib::memGunzip($Val) if defined($Val) && $Self->{compress};
+  # (gunzip from tmp var: https://rt.cpan.org/Ticket/Display.html?id=72945)
+  $Val = Compress::Zlib::memGunzip(my $Tmp = $Val) if defined($Val) && $Self->{compress};
   $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
 
   # If explicitly asked to skip unlocking, we return the reference to the unlocker

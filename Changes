@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.40 Mon Dec 5  10:30 2011
+  - Work around reference holding bug in
+     Compress::Zlib
+
 1.39 Mon Jul 18 09:50 2011
   - Remove CImpl and simplify structure into just
      Cache::FastMmap module making all XS calls
