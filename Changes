@@ -1,5 +1,11 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.41 Thu Aug 29 15:30 2013
+  - Actually reuse deleted slots. Meant that if
+     you used ->remove() a lot, we would re-organise
+     cache more than needed
+  - Include typo and meta patches from dsteinbrunner
+
 1.40 Mon Dec 5  10:30 2011
   - Work around reference holding bug in
      Compress::Zlib

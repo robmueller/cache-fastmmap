@@ -1025,9 +1025,9 @@ MU32 * _mmc_find_slot(
     /* data_offset == 1 means deleted slot, we can reuse if writing */
     if (data_offset == 0) {
       /* Return pointer to last checked slot */
-      return slot_ptr;
+      break;
     }
-    if (data_offset == 1 && mode == 1 && 0 == slot_ptr) {
+    if (data_offset == 1 && mode == 1 && 0 == first_deleted) {
       /* Save pointer to first usable slot; if we don't find the key later,
          we'll fall back to returning this.
       */
@@ -1055,11 +1055,13 @@ MU32 * _mmc_find_slot(
     if (++slot_ptr == slots_end) { slot_ptr = cache->p_base_slots; }
     ASSERT(slot_ptr >= cache->p_base_slots && slot_ptr < slots_end);
   }
+  /* No slot found */
+  if (++slots_left == 0) slot_ptr = 0;
 
   if (1 == mode && 0 != first_deleted)
     return first_deleted;
   else
-    return 0;
+    return slot_ptr;
 }
 
 /*
