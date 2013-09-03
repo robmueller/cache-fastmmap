@@ -328,7 +328,7 @@ parent that forks off children to ensure that file is empty at the start
 B<Note:> This is quite important to do in the parent to ensure a
 consistent file structure. The shared file is not perfectly transaction
 safe, and so if a child is killed at the wrong instant, it might leave
-the the cache file in an inconsistent state.
+the cache file in an inconsistent state.
 
 =item * B<raw_values>
 
@@ -782,7 +782,7 @@ sub set {
 Atomically retrieve and set the value of a Key.
 
 The page is locked while retrieving the $Key and is unlocked only after
-the value is set, thus guaranteeing the value does not change betwen
+the value is set, thus guaranteeing the value does not change between
 the get and set operations.
 
 $Sub is a reference to a subroutine that is called to calculate the
