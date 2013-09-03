@@ -12,6 +12,11 @@ WriteMakefile(
     'LIBS'          => [''],
     'INC'           => '-I.',
     'OBJECT'        => 'FastMmap.o mmap_cache.o ' . ($^O eq 'MSWin32' ? 'win32.o' : 'unix.o'),
+    'META_MERGE'    => {
+        'resources' => {
+            'repository' => 'https://github.com/robmueller/cache-fastmmap',
+        },
+    },
 #	    'OPTIMIZE' => '-g -DDEBUG -ansi -pedantic',
 );
 
