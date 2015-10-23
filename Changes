@@ -1,6 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
-1.42 Fri oct 23 13:30 2015
+1.43 Fri Oct 23 14:00 2015
+  - Update copyright + version correctly everywhere
+
+1.42 Fri Oct 23 13:30 2015
   - Allow get_and_set callback to return an empty list
      which means "no change". This allows atomic
      "get, and set if not present" type action, but
