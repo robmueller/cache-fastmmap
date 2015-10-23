@@ -1,5 +1,12 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.42 Fri oct 23 13:30 2015
+  - Allow get_and_set callback to return an empty list
+     which means "no change". This allows atomic
+     "get, and set if not present" type action, but
+     without resetting the expiry time on each get.
+     This is basically the same as using the read_cb
+
 1.41 Thu Aug 29 15:30 2013
   - Actually reuse deleted slots. Meant that if
      you used ->remove() a lot, we would re-organise

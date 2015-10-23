@@ -293,7 +293,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.41';
+our $VERSION = '1.42';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -790,6 +790,11 @@ new value to store. $Sub gets $Key and the current value
 as parameters, and
 should return the new value to set in the cache for the given $Key.
 
+If the subroutine returns an empty list, no value is stored back
+in the cache. This avoids updating the expiry time on an entry
+if you want to do a "get if in cache, store if not present" type
+callback.
+
 For example, to atomically increment a value in the cache, you
 can just use:
 
@@ -824,9 +829,15 @@ sub get_and_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
   my ($Value, $Unlock) = $Self->get($_[1], { skip_unlock => 1 });
+
   # If this throws an error, $Unlock ref will still unlock page
-  $Value = $_[2]->($_[1], $Value);
-  my $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock });
+  my @NewValue = $_[2]->($_[1], $Value);
+
+  my $DidStore = 0;
+  if (@NewValue) {
+    ($Value) = @NewValue;
+    my $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock });
+  }
 
   return wantarray ? ($Value, $DidStore) : $Value;
 }
@@ -1377,10 +1388,10 @@ Rob Mueller L<mailto:cpan@robm.fastmail.fm>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2011 by Opera Software Australia Pty Ltd
+Copyright (C) 2003-2015 by FastMail Pty Ltd
 
 This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself. 
+it under the same terms as Perl itself.
 
 =cut
 
