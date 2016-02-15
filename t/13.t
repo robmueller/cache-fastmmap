@@ -1,61 +1,92 @@
-
-#########################
+use strict;
+use warnings;
 
 use Test::More;
+use Data::Dumper;
+$Data::Dumper::Deparse = 1;
 
 BEGIN {
-  eval "use Compress::Zlib ();";
-  if ($@) {
-    plan skip_all => 'No Compress::Zlib installed, no compress tests';
-  } else {
-    plan tests => 11;
-  }
+  note 'Compression testing';
   use_ok('Cache::FastMmap');
 }
 
-#########################
-
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
-
-my $FC = Cache::FastMmap->new(
-  page_size => 8192,
-  num_pages => 1,
-  init_file => 1,
-  raw_values => 1,
-  compress => 1
+my %compressors = (
+  lz4    => 'Compress::LZ4',
+  snappy => 'Compress::Snappy',
+  zlib   => 'Compress::Zlib',
 );
-ok( defined $FC );
 
-my $FCNC = Cache::FastMmap->new(
-  page_size => 8192,
-  num_pages => 1,
-  init_file => 1,
-  raw_values => 1,
-);
-ok( defined $FCNC );
+for my $compressor ( keys %compressors ) {
+  note "  Testing with $compressors{$compressor}";
+  # Avoid prototype mismatch warnings
+  my $namespace = 'My::' . $compressors{$compressor};
+  if ( ! eval "package $namespace; use $compressors{$compressor}; 1" ) {
+    note "  Cannot load $compressors{$compressor}: skipping tests: reason: $@";
+    next;
+  }
 
-sub rand_str {
-  return join '', map { chr(rand(26) + ord('a')) } 1 .. int($_[0]);
+  my $FC = Cache::FastMmap->new(
+    page_size  => 8192,
+    num_pages  => 1,
+    init_file  => 1,
+    raw_values => 1,
+    compressor => $compressor
+  );
+  ok( defined $FC,          'create compressing cache' );
+
+  my $FCNC = Cache::FastMmap->new(
+    page_size  => 8192,
+    num_pages  => 1,
+    init_file  => 1,
+    raw_values => 1,
+  );
+  ok( defined $FCNC,        'create non-compressing cache of same size' );
+
+  my $K1 = rand_str(10);
+  my $K2 = rand_str(10);
+  my $V = rand_str(10) x 1000;
+
+  ok( $FC->set($K1, $V),    'set() with large value in compressing cache' );
+  ok( $FC->set($K2, $V),    'also set() same value with different key' );
+  ok( !$FCNC->set($K1, $V), 'cannot set() same value in non-compressing cache' );
+  ok( !$FCNC->set($K2, $V), 'also fail to set() with different key' );
+
+  my $CV1 = $FC->get($K1);
+  my $CV2 = $FC->get($K2);
+
+  is( $CV1, $V,             'get() same large value from compressing cache' );
+  is( $CV2, $V,             'also get() same value with second key used' );
+
+  $CV1 = $FCNC->get($K1);
+  $CV2 = $FCNC->get($K2);
+
+  ok( !defined $CV1,        'cannot get() anything from non-compressing cache' );
+  ok( !defined $CV2,        'also fail to get() with second key used' );
 }
 
-my $K1 = rand_str(10);
-my $K2 = rand_str(10);
-my $V = rand_str(10) x 1000;
+note '  Check support for deprecated `compress` param';
+for ( 1, 'Compress::NonExistent', 'Compress::LZ4' ) {
+  my $DCNC = Cache::FastMmap->new(
+    page_size  => 8192,
+    num_pages  => 1,
+    init_file  => 1,
+    raw_values => 1,
+    compress   => $_,
+  );
 
-ok( $FC->set($K1, $V) );
-ok( $FC->set($K2, $V) );
-ok( !$FCNC->set($K1, $V) );
-ok( !$FCNC->set($K2, $V) );
+  ok( defined $DCNC,        'create cache with `compress` param: ' . $_ );
 
-my $CV1 = $FC->get($K1);
-my $CV2 = $FC->get($K2);
+  my $wanted = quotemeta('&$uncompress(my $Tmp = shift())');
+  $wanted = qr/$wanted/;
+  my $got = Dumper $DCNC->{uncompress};
+  like( $got, $wanted,      'using `Compress::Zlib` as compressor' );
+}
 
-ok( $CV1 eq $V );
-ok( $CV2 eq $V );
 
-$CV1 = $FCNC->get($K1);
-$CV2 = $FCNC->get($K2);
+done_testing;
 
-ok( !defined $CV1 );
-ok( !defined $CV2 );
+sub rand_str {
+    return join '', map { chr(rand(26) + ord('a')) } 1 .. int($_[0]);
+}
+
+__END__
