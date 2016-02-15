@@ -335,16 +335,38 @@ the cache file in an inconsistent state.
 Store values as raw binary data rather than using Storable to free/thaw
 data structures (default: 0)
 
+=item * B<compressor>
+
+Compress the value (but not the key) before storing into the cache, using
+the compression package identified by the value of the parameter. Supported
+values are:
+
+  'zlib'   for 'Compress::Zlib'
+  'lz4'    for 'Compress::LZ4'
+  'snappy' for 'Compress:Snappy'
+
+If this parameter has a value the module
+will attempt to load the associated package and then use the API of that
+package to compress data before storing in the cache, and uncompress it upon
+retrieval from the cache. (default: undef)
+
+( Note: Historically this module only supported a boolean value for the
+`compress` parameter and defaulted to use Compress::Zlib. The note for the
+old `compress` parameter stated: "Some initial testing shows that the
+uncompressing tends to be very fast, though the compressing can be quite
+slow, so it's probably best to use this option only if you know values in
+the cache are long-lived and have a high hit rate."
+
+Comparable test results for the other compression tools are not yet available;
+submission of benchmarks welcome. However, the documentation for the 'Snappy'
+library (http://google.github.io/snappy/) states: For instance, compared to
+the fastest mode of zlib, Snappy is an order of magnitude faster for most
+inputs, but the resulting compressed files are anywhere from 20% to 100%
+bigger. )
+
 =item * B<compress>
 
-Compress the value (but not the key) before storing into the cache. If
-you set this to 1, the module will attempt to require the Compress::Zlib
-module and then use the memGzip() function on the value data before
-storing into the cache, and memGunzip() when retrieving data from the
-cache. Some initial testing shows that the uncompressing tends to be
-very fast, though the compressing can be quite slow, so it's probably
-best to use this option only if you know values in the cache are long
-lived and have a high hit rate. (default: 0)
+Deprecated. Please use B<compressor>, see above.
 
 =item * B<enable_stats>
 
@@ -538,12 +560,46 @@ sub new {
   }
 
   # Compress stored values?
-  my $compress = $Self->{compress} = int($Args{compress} || 0);
+  my $compressor = $Args{compressor} || 0;
 
-  # Need Compress::Zlib module if using compression
-  if ($compress) {
-    eval "use Compress::Zlib; 1;"
-      || die "Could not load Compress::Zlib module: $@";
+  # Also support legacy boolean argument which forced use of Compress::Zlib
+  $compressor ||= $Args{compress} ? 'zlib' : 0;
+
+  my %known_compressors = (
+    zlib   => 'Compress::Zlib',
+    lz4    => 'Compress::LZ4',
+    snappy => 'Compress::Snappy',
+  );
+
+  if ( $compressor ) {
+    if ( ! $known_compressors{ $compressor } ) {
+      die "Unrecognized value >$compressor< for `compressor` parameter";
+    }
+    $compressor = $known_compressors{ $compressor };
+
+    # Avoid 'prototype mismatch' warnings in testing
+    my $namespace = 'My::' . $compressor;
+    if ( ! eval "package $namespace; use $compressor; 1;" ) {
+      die "Could not load compression package: $compressor : $@";
+    } else {
+      # LZ4 and Snappy use same API
+      if ($compressor eq 'Compress::LZ4' || $compressor eq 'Compress::Snappy') {
+        my $compress   = "My::$compressor\::compress";
+        my $uncompress = "My::$compressor\::uncompress";
+        no strict 'refs';
+        $Self->{compress}   = sub { goto &$compress };
+        $Self->{uncompress} = sub { goto &$uncompress };
+        use strict 'refs';
+      } elsif ($compressor eq 'Compress::Zlib') {
+        my $compress   = "$compressor\::memGzip";
+        my $uncompress = "$compressor\::memGunzip";
+        no strict 'refs';
+        $Self->{compress}   = sub { goto &$compress };
+        # (gunzip from tmp var: https://rt.cpan.org/Ticket/Display.html?id=72945)
+        $Self->{uncompress} = sub { &$uncompress(my $Tmp = shift) };
+        use strict 'refs';
+      }
+    }
   }
 
   # If using empty_on_exit, need to track used caches
@@ -690,7 +746,7 @@ sub get {
 
       # If not using raw values, use freeze() to turn data 
       $Val = freeze(\$Val) if !$Self->{raw_values};
-      $Val = Compress::Zlib::memGzip($Val) if $Self->{compress};
+      $Val = $Self->{compress}($Val) if $Self->{compress};
 
       # Get key/value len (we've got 'use bytes'), and do expunge check to
       #  create space if needed
@@ -707,8 +763,7 @@ sub get {
   $Unlock = undef unless $SkipUnlock;
 
   # If not using raw values, use thaw() to turn data back into object
-  # (gunzip from tmp var: https://rt.cpan.org/Ticket/Display.html?id=72945)
-  $Val = Compress::Zlib::memGunzip(my $Tmp = $Val) if defined($Val) && $Self->{compress};
+  $Val = $Self->{uncompress}($Val) if defined($Val) && $Self->{compress};
   $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
 
   # If explicitly asked to skip unlocking, we return the reference to the unlocker
@@ -735,7 +790,7 @@ sub set {
 
   # If not using raw values, use freeze() to turn data 
   my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
-  $Val = Compress::Zlib::memGzip($Val) if $Self->{compress};
+  $Val = $Self->{compress}($Val) if $Self->{compress};
 
   # Get opts, make compatible with Cache::Cache interface
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
@@ -969,7 +1024,7 @@ sub get_keys {
   for (@Details) {
     my $Val = $_->{value};
     if (defined $Val) {
-      $Val = Compress::Zlib::memGunzip($Val) if $Compress;
+      $Val = $Self->{uncompress}($Val) if $Compress;
       if (!$RawValues) {
         $Val = eval { thaw($Val) };
         $Val = $$Val if ref($Val);
@@ -1068,7 +1123,7 @@ sub multi_get {
     next unless $Found;
 
     # If not using raw values, use thaw() to turn data back into object
-    $Val = Compress::Zlib::memGunzip($Val) if defined($Val) && $Self->{compress};
+    $Val = $Self->{uncompress}($Val) if defined($Val) && $Self->{compress};
     $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
 
     # Save to return
@@ -1103,7 +1158,7 @@ sub multi_set {
 
     # If not using raw values, use freeze() to turn data 
     $Val = freeze(\$Val) unless $Self->{raw_values};
-    $Val = Compress::Zlib::memGzip($Val) if $Self->{compress};
+    $Val = $Self->{compress}($Val) if $Self->{compress};
 
     # Get key/value len (we've got 'use bytes'), and do expunge check to
     #  create space if needed
