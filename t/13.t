@@ -19,8 +19,7 @@ my %compressors = (
 for my $compressor ( keys %compressors ) {
   note "  Testing with $compressors{$compressor}";
   # Avoid prototype mismatch warnings
-  my $namespace = 'My::' . $compressors{$compressor};
-  if ( ! eval "package $namespace; use $compressors{$compressor}; 1" ) {
+  if ( ! eval "require $compressors{$compressor};" ) {
     note "  Cannot load $compressors{$compressor}: skipping tests: reason: $@";
     next;
   }

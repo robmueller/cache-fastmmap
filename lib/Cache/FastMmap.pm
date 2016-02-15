@@ -577,27 +577,18 @@ sub new {
     }
     $compressor = $known_compressors{ $compressor };
 
-    # Avoid 'prototype mismatch' warnings in testing
-    my $namespace = 'My::' . $compressor;
-    if ( ! eval "package $namespace; use $compressor; 1;" ) {
+    if ( ! eval "require $compressor;" ) {
       die "Could not load compression package: $compressor : $@";
     } else {
       # LZ4 and Snappy use same API
       if ($compressor eq 'Compress::LZ4' || $compressor eq 'Compress::Snappy') {
-        my $compress   = "My::$compressor\::compress";
-        my $uncompress = "My::$compressor\::uncompress";
-        no strict 'refs';
-        $Self->{compress}   = sub { goto &$compress };
-        $Self->{uncompress} = sub { goto &$uncompress };
-        use strict 'refs';
+        $Self->{compress}   = $compressor->can("compress");
+        $Self->{uncompress} = $compressor->can("uncompress");
       } elsif ($compressor eq 'Compress::Zlib') {
-        my $compress   = "$compressor\::memGzip";
-        my $uncompress = "$compressor\::memGunzip";
-        no strict 'refs';
-        $Self->{compress}   = sub { goto &$compress };
+        $Self->{compress}   = $compressor->can("memGzip");
         # (gunzip from tmp var: https://rt.cpan.org/Ticket/Display.html?id=72945)
+        my $uncompress = $compressor->can("memGunzip");
         $Self->{uncompress} = sub { &$uncompress(my $Tmp = shift) };
-        use strict 'refs';
       }
     }
   }
