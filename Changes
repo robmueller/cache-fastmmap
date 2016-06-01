@@ -1,5 +1,12 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.44 Wed Jun 1 21:45 2016
+  - Set FD_CLOEXEC flag on cache files when opened.
+     Particularly useful in Net::Server where
+     HUPing a process causes it to exec() itself.
+     Unless you undef the cache references, you'll
+     leak fd's after each HUP
+
 1.43 Fri Oct 23 14:00 2015
   - Update copyright + version correctly everywhere
 

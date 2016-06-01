@@ -94,6 +94,9 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
     return -1;
   }
 
+  /* Automatically close cache fd on exec */
+  fcntl(fh, F_SETFD, FD_CLOEXEC);
+
   cache->fh = fh;
 
   return 0;
