@@ -36,7 +36,7 @@ my @Caches = map {
     page_size => 4096,
     num_pages => 1,
     init_file => 1,
-    raw_values => 1,
+    serializer => '',
   );
 } (1 .. 20);
 my $CacheCount = @Caches;

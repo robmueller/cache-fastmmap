@@ -25,7 +25,7 @@ my $GTop = GTop->new;
 our ($DidRead, $DidWrite, $DidDelete, $HitCount);
 
 our $FC;
-$FC = Cache::FastMmap->new(init_file => 0, raw_values => 1);
+$FC = Cache::FastMmap->new(init_file => 0, serializer => '');
 $FC = undef;
 
 TestLeak(\&NewLeak, "new - 1");
@@ -35,7 +35,7 @@ TestLeak(\&NewLeak2, "new2 - 2");
 
 $FC = Cache::FastMmap->new(
   init_file => 1,
-  raw_values => 1,
+  serializer => '',
   num_pages => 17,
   page_size => 8192,
   read_cb => sub { $DidRead++; return undef; },
@@ -101,7 +101,7 @@ sub NewLeak {
   for (1 .. 1000) {
     $FC = Cache::FastMmap->new(
       init_file => 0,
-      raw_values => 1,
+      serializer => '',
       num_pages => 17,
       page_size => 8192,
       read_cb => sub { $DidRead++; return undef; },
@@ -119,7 +119,7 @@ sub NewLeak2 {
   for (1 .. 100) {
     $FC = Cache::FastMmap->new(
       init_file => 1,
-      raw_values => 1,
+      serializer => '',
       num_pages => 17,
       page_size => 8192,
       read_cb => sub { $DidRead++; return undef; },

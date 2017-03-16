@@ -22,7 +22,6 @@ my $RCBCalled = 0;
 
 my $FC = Cache::FastMmap->new(
   cache_not_found => 1,
-  raw_values => 0,
   init_file => 1,
   num_pages => 89,
   page_size => 1024,

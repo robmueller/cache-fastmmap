@@ -1,5 +1,13 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.45 Thu Mar 14 11:10 2017
+  - Deprecate raw_values and compress options, add
+     new compressor and serializer options to allow
+     different compressors and serializers.
+     Initial compressor support: zlib, lz4, snappy
+     Initial serializer support: storable, sereal, json
+     Thanks to nickt@broadbean.com for initial work
+
 1.44 Wed Jun 1 21:45 2016
   - Set FD_CLOEXEC flag on cache files when opened.
      Particularly useful in Net::Server where

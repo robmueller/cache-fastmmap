@@ -14,7 +14,7 @@ my $FC = Cache::FastMmap->new(
   page_size => 65536,
   num_pages => 1,
   init_file => 1,
-  raw_values => 1,
+  serializer => '',
   start_slots => 89,
 );
 ok( defined $FC );

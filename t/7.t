@@ -19,7 +19,7 @@ my %BackingStore = (
 my %WrittenItems = %BackingStore;
 
 my $FC = Cache::FastMmap->new(
-  raw_values => 1,
+  serializer => '',
   init_file => 1,
   num_pages => 89,
   page_size => 1024,

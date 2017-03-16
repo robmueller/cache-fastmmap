@@ -11,13 +11,13 @@ Cache::FastMmap - Uses an mmap'ed file to act as a shared memory interprocess ca
   # Uses vaguely sane defaults
   $Cache = Cache::FastMmap->new();
 
-  # $Value must be a reference...
+  # Uses Storable to serialize $Value to bytes for storage
   $Cache->set($Key, $Value);
   $Value = $Cache->get($Key);
 
-  $Cache = Cache::FastMmap->new(raw_values => 1);
+  $Cache = Cache::FastMmap->new(serializer => '');
 
-  # $Value can't be a reference...
+  # Stores stringified bytes of $Value directly
   $Cache->set($Key, $Value);
   $Value = $Cache->get($Key);
 
@@ -293,7 +293,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.44';
+our $VERSION = '1.45';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -330,10 +330,30 @@ consistent file structure. The shared file is not perfectly transaction
 safe, and so if a child is killed at the wrong instant, it might leave
 the cache file in an inconsistent state.
 
+=item * B<serializer>
+
+Use a serialization library to serialize perl data structures before
+storing in the cache. If not set, the raw value in the variable passed
+to set() is stored as a string. You must set this if you want to store
+anything other than basic scalar values. Supported values are:
+
+  ''         for none
+  'storable' for 'Storable'
+  'sereal'   for 'Sereal'
+  'json'     for 'JSON'
+
+If this parameter has a value the module will attempt to load the
+associated package and then use the API of that package to serialize data
+before storing in the cache, and deserialize it upon retrieval from the
+cache. (default: 'storable')
+
+(Note: Historically this module only supported a boolean value for the
+`raw_values` parameter and defaulted to 0, which meant it used Storable
+to serialze all values.)
+
 =item * B<raw_values>
 
-Store values as raw binary data rather than using Storable to free/thaw
-data structures (default: 0)
+Deprecated. Use B<serializer> above
 
 =item * B<compressor>
 
@@ -343,14 +363,14 @@ values are:
 
   'zlib'   for 'Compress::Zlib'
   'lz4'    for 'Compress::LZ4'
-  'snappy' for 'Compress:Snappy'
+  'snappy' for 'Compress::Snappy'
 
-If this parameter has a value the module
-will attempt to load the associated package and then use the API of that
-package to compress data before storing in the cache, and uncompress it upon
-retrieval from the cache. (default: undef)
+If this parameter has a value the module will attempt to load the
+associated package and then use the API of that package to compress data
+before storing in the cache, and uncompress it upon retrieval from the
+cache. (default: undef)
 
-( Note: Historically this module only supported a boolean value for the
+(Note: Historically this module only supported a boolean value for the
 `compress` parameter and defaulted to use Compress::Zlib. The note for the
 old `compress` parameter stated: "Some initial testing shows that the
 uncompressing tends to be very fast, though the compressing can be quite
@@ -550,20 +570,35 @@ sub new {
     $Args{unlink_on_exit} = -f($share_file) ? 0 : 1;
   }
 
-  # Storing raw/storable values?
-  my $raw_values = $Self->{raw_values} = int($Args{raw_values} || 0);
+  # Serialise stored values?
+  my $serializer = $Args{serializer} // ($Args{raw_values} ? '' : 'storable');
 
-  # Need storable module if not using raw values
-  if (!$raw_values) {
-    eval "use Storable qw(freeze thaw); 1;"
-      || die "Could not load Storable module: $@";
+  if ($serializer) {
+    if ($serializer eq 'storable') {
+      eval "require Storable;"
+        || die "Could not load serialization package: Storable : $@";
+      $Self->{serialize}   = Storable->can("freeze");
+      $Self->{deserialize} = Storable->can("thaw");
+    } elsif ($serializer eq 'sereal') {
+      eval "require Sereal::Encoder; require Sereal::Decoder;"
+        || die "Could not load serialization package: Sereal : $@";
+      my $SerealEnc = Sereal::Encoder->new();
+      my $SerealDec = Sereal::Decoder->new();
+      $Self->{serialize} = sub { $SerealEnc->encode(@_); };
+      $Self->{deserialize} = sub { $SerealDec->decode(@_); };
+    } elsif ($serializer eq 'json') {
+      eval "require JSON;"
+        || die "Could not load serialization package: JSON : $@";
+      my $JSON = JSON->new->utf8->allow_nonref;
+      $Self->{serialize}   = sub { $JSON->encode(${$_[0]}); };
+      $Self->{deserialize} = sub { \$JSON->decode($_[0]); };
+    } else {
+      die "Unrecognized value >$serializer< for `serializer` parameter";
+    }
   }
 
   # Compress stored values?
-  my $compressor = $Args{compressor} || 0;
-
-  # Also support legacy boolean argument which forced use of Compress::Zlib
-  $compressor ||= $Args{compress} ? 'zlib' : 0;
+  my $compressor = $Args{compressor} // ($Args{compress} ? 'zlib' : 0);
 
   my %known_compressors = (
     zlib   => 'Compress::Zlib',
@@ -572,22 +607,20 @@ sub new {
   );
 
   if ( $compressor ) {
-    if ( ! $known_compressors{ $compressor } ) {
-      die "Unrecognized value >$compressor< for `compressor` parameter";
-    }
-    $compressor = $known_compressors{ $compressor };
+    my $compressor_module = $known_compressors{$compressor}
+      || die "Unrecognized value >$compressor< for `compressor` parameter";
 
-    if ( ! eval "require $compressor;" ) {
-      die "Could not load compression package: $compressor : $@";
+    if ( ! eval "require $compressor_module;" ) {
+      die "Could not load compression package: $compressor_module : $@";
     } else {
       # LZ4 and Snappy use same API
-      if ($compressor eq 'Compress::LZ4' || $compressor eq 'Compress::Snappy') {
-        $Self->{compress}   = $compressor->can("compress");
-        $Self->{uncompress} = $compressor->can("uncompress");
-      } elsif ($compressor eq 'Compress::Zlib') {
-        $Self->{compress}   = $compressor->can("memGzip");
+      if ($compressor_module eq 'Compress::LZ4' || $compressor_module eq 'Compress::Snappy') {
+        $Self->{compress}   = $compressor_module->can("compress");
+        $Self->{uncompress} = $compressor_module->can("uncompress");
+      } elsif ($compressor_module eq 'Compress::Zlib') {
+        $Self->{compress}   = $compressor_module->can("memGzip");
         # (gunzip from tmp var: https://rt.cpan.org/Ticket/Display.html?id=72945)
-        my $uncompress = $compressor->can("memGunzip");
+        my $uncompress = $compressor_module->can("memGunzip");
         $Self->{uncompress} = sub { &$uncompress(my $Tmp = shift) };
       }
     }
@@ -595,7 +628,7 @@ sub new {
 
   # If using empty_on_exit, need to track used caches
   my $empty_on_exit = $Self->{empty_on_exit} = int($Args{empty_on_exit} || 0);
-  
+
   # Need Scalar::Util::weaken to track open caches
   if ($empty_on_exit) {
     eval "use Scalar::Util qw(weaken); 1;"
@@ -735,8 +768,7 @@ sub get {
       # Are we doing writeback's? If so, need to mark as dirty in cache
       my $write_back = $Self->{write_back};
 
-      # If not using raw values, use freeze() to turn data 
-      $Val = freeze(\$Val) if !$Self->{raw_values};
+      $Val = $Self->{serialize}(\$Val) if $Self->{serialize};
       $Val = $Self->{compress}($Val) if $Self->{compress};
 
       # Get key/value len (we've got 'use bytes'), and do expunge check to
@@ -755,7 +787,7 @@ sub get {
 
   # If not using raw values, use thaw() to turn data back into object
   $Val = $Self->{uncompress}($Val) if defined($Val) && $Self->{compress};
-  $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
+  $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
 
   # If explicitly asked to skip unlocking, we return the reference to the unlocker
   return ($Val, $Unlock) if $SkipUnlock;
@@ -779,8 +811,7 @@ for more details.
 sub set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  # If not using raw values, use freeze() to turn data 
-  my $Val = $Self->{raw_values} ? $_[2] : freeze(\$_[2]);
+  my $Val = $Self->{serialize} ? $Self->{serialize}(\$_[2]) : $_[2];
   $Val = $Self->{compress}($Val) if $Self->{compress};
 
   # Get opts, make compatible with Cache::Cache interface
@@ -1004,10 +1035,10 @@ sub get_keys {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
   my $Mode = $_[1] || 0;
-  my ($Compress, $RawValues) = @$Self{qw(compress raw_values)};
+  my ($Uncompress, $Deserialize) = @$Self{qw(uncompress deserialize)};
 
   return fc_get_keys($Cache, $Mode)
-    if $Mode <= 1 || ($Mode == 2 && $RawValues && !$Compress);
+    if $Mode <= 1 || ($Mode == 2 && !$Uncompress && !$Deserialize);
 
   # If we're getting values as well, and they're not raw, unfreeze them
   my @Details = fc_get_keys($Cache, 2);
@@ -1015,11 +1046,8 @@ sub get_keys {
   for (@Details) {
     my $Val = $_->{value};
     if (defined $Val) {
-      $Val = $Self->{uncompress}($Val) if $Compress;
-      if (!$RawValues) {
-        $Val = eval { thaw($Val) };
-        $Val = $$Val if ref($Val);
-      }
+      $Val = $Uncompress->($Val) if $Uncompress;
+      $Val = ${$Deserialize->($Val)} if $Deserialize;
       $_->{value} = $Val;
     }
   }
@@ -1115,7 +1143,7 @@ sub multi_get {
 
     # If not using raw values, use thaw() to turn data back into object
     $Val = $Self->{uncompress}($Val) if defined($Val) && $Self->{compress};
-    $Val = ${thaw($Val)} if defined($Val) && !$Self->{raw_values};
+    $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
 
     # Save to return
     $KVs{$_} = $Val;
@@ -1147,8 +1175,7 @@ sub multi_set {
   my $KVs = $_[2];
   while (my ($Key, $Val) = each %$KVs) {
 
-    # If not using raw values, use freeze() to turn data 
-    $Val = freeze(\$Val) unless $Self->{raw_values};
+    $Val = $Self->{serialize}(\$Val) if $Self->{serialize};
     $Val = $Self->{compress}($Val) if $Self->{compress};
 
     # Get key/value len (we've got 'use bytes'), and do expunge check to
@@ -1215,18 +1242,15 @@ sub _expunge_page {
 
   my @WBItems = fc_expunge($Cache, $Mode, $write_cb ? 1 : 0, $Len);
 
-  my ($Compress, $RawValues) = @$Self{qw(compress raw_values)};
+  my ($Uncompress, $Deserialize) = @$Self{qw(uncompress deserialize)};
 
   for (@WBItems) {
     next if !($_->{flags} & FC_ISDIRTY);
 
     my $Val = $_->{value};
     if (defined $Val) {
-      $Val = Compress::Zlib::memGunzip($Val) if $Compress;
-      if (!$RawValues) {
-        $Val = eval { thaw($Val) };
-        $Val = $$Val if ref($Val);
-      }
+      $Val = $Uncompress->($Val) if $Uncompress;
+      $Val = ${$Deserialize->($Val)} if $Deserialize;
     }
     eval { $write_cb->($Self->{context}, $_->{key}, $Val, $_->{expire_time}); };
   }

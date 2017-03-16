@@ -10,7 +10,7 @@ use strict;
 # Insert your test code below, the Test::More module is use()ed here so read
 # its man page ( perldoc Test::More ) for help writing this test script.
 
-my $FC = Cache::FastMmap->new(init_file => 1, raw_values => 0);
+my $FC = Cache::FastMmap->new(init_file => 1);
 ok( defined $FC );
 
 # Test empty cache

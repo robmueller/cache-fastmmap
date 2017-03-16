@@ -28,7 +28,7 @@ for my $compressor ( keys %compressors ) {
     page_size  => 8192,
     num_pages  => 1,
     init_file  => 1,
-    raw_values => 1,
+    serializer => '',
     compressor => $compressor
   );
   ok( defined $FC,          'create compressing cache' );
@@ -37,7 +37,7 @@ for my $compressor ( keys %compressors ) {
     page_size  => 8192,
     num_pages  => 1,
     init_file  => 1,
-    raw_values => 1,
+    serializer => '',
   );
   ok( defined $FCNC,        'create non-compressing cache of same size' );
 
@@ -69,7 +69,7 @@ for ( 1, 'Compress::NonExistent', 'Compress::LZ4' ) {
     page_size  => 8192,
     num_pages  => 1,
     init_file  => 1,
-    raw_values => 1,
+    serializer => '',
     compress   => $_,
   );
 

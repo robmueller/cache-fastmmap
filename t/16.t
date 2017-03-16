@@ -12,7 +12,6 @@ use strict;
 
 my $FC = Cache::FastMmap->new(
   init_file => 1,
-  raw_values => 0,
   num_pages => 1,
   page_size => 2 ** 15,
 );

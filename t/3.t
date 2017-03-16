@@ -10,7 +10,7 @@ use strict;
 # Insert your test code below, the Test::More module is use()ed here so read
 # its man page ( perldoc Test::More ) for help writing this test script.
 
-my $FC = Cache::FastMmap->new(init_file => 1, raw_values => 1);
+my $FC = Cache::FastMmap->new(init_file => 1, serializer => '');
 ok( defined $FC );
 
 my (@Keys, $HitRate);
@@ -32,7 +32,7 @@ srand(123456);
 $FC = Cache::FastMmap->new(
   init_file => 1,
   page_size => 8192,
-  raw_values => 1
+  serializer => ''
 );
 ok( defined $FC );
 
