@@ -75,8 +75,10 @@ for ( 1, 'Compress::NonExistent', 'Compress::LZ4' ) {
 
   ok( defined $DCNC,        'create cache with `compress` param: ' . $_ );
 
-  my $wanted = quotemeta('&$uncompress(my $Tmp = shift())');
-  $wanted = qr/$wanted/;
+  my $wanted1 = quotemeta('&$uncompress(my $Tmp = shift())');
+  # rt115043: older versions of Data::Dumper would output like below.
+  my $wanted2 = quotemeta('&$uncompress(my $Tmp = shift @_)');
+  my $wanted = qr/$wanted1|$wanted2/;
   my $got = Dumper $DCNC->{uncompress};
   like( $got, $wanted,      'using `Compress::Zlib` as compressor' );
 }
