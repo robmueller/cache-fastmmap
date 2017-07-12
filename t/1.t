@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 56;
+use Test::More tests => 62;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -22,6 +22,9 @@ ok( !defined $FC->get(' ' x 65536), "empty get(' ' x 65536)" );
 # Test basic store/get on key sizes
 ok( $FC->set('', 'abc'),          "set('', 'abc')" );
 is( $FC->get(''), 'abc',          "get('') eq 'abc'");
+my ($R, $DidStore) =  $FC->get_and_set('', sub { 'abcd' });
+is ($R, "abcd", "get_and_set('', sub { 'abcd' })" );
+is ($DidStore, 1, "get_and_set did store");
 
 ok( $FC->set(' ', 'def'),         "set(' ', 'def')" );
 is( $FC->get(' '), 'def',         "get(' ') eq 'def'");
@@ -29,9 +32,17 @@ is( $FC->get(' '), 'def',         "get(' ') eq 'def'");
 ok( $FC->set(' ' x 1024, 'ghi'),  "set(' ' x 1024, 'ghi')");
 is( $FC->get(' ' x 1024), 'ghi',  "get(' ' x 1024) eq 'ghi'");
 
+my ($R, $DidStore) =  $FC->get_and_set(' ' x 1024, sub { 'bcde' });
+is($R, "bcde", "get_and_set(' ' x 1024, sub { 'bcde' })" );
+is($DidStore, 1, "get_and_set did store");
+
 # Bigger than the page size - should not work
 ok( !$FC->set(' ' x 65536, 'jkl'),  "set(' ' x 65536, 'jkl')");
 ok( !defined $FC->get(' ' x 65536), "empty get(' ' x 65536)");
+
+my ($R, $DidStore) =  $FC->get_and_set(' ' x 65536, sub { 'cdef' });
+ok( !defined $FC->get(' ' x 65536), "empty get(' ' x 65536)" );
+is($DidStore, 0, "get_and_set did not store");
 
 # Test basic store/get on value sizes
 ok( $FC->set('abc', ''),          "set('abc', '')");

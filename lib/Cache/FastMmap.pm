@@ -915,7 +915,7 @@ sub get_and_set {
   my $DidStore = 0;
   if (@NewValue) {
     ($Value) = @NewValue;
-    my $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock });
+    $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock });
   }
 
   return wantarray ? ($Value, $DidStore) : $Value;
