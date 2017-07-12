@@ -303,6 +303,9 @@ XSLoader::load('Cache::FastMmap', $VERSION);
 our %LiveCaches;
 
 use constant FC_ISDIRTY => 1;
+
+use File::Spec;
+
 # }}}
 
 =item I<new(%Opts)>
@@ -552,9 +555,8 @@ sub new {
   # Work out cache file and whether to init
   my $share_file = $Args{share_file};
   if (!$share_file) {
-    my $tmp_dir = $ENV{TMPDIR} || "/tmp";
-    my $win_tmp_dir = $ENV{TEMP} || "c:\\";
-    $share_file = ($^O eq "MSWin32" ? "$win_tmp_dir\\sharefile" : "$tmp_dir/sharefile");
+    my $tmp_dir = File::Spec->tmpdir;
+    $share_file = File::Spec->catfile($tmp_dir, "sharefile");
     $share_file .= "-" . $$ . "-" . time . "-" . int(rand(100000));
   }
   !ref($share_file) || die "share_file argument was a reference";
