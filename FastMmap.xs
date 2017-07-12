@@ -17,7 +17,7 @@
     } \
     obj = SvRV(obj); \
     if (!SvIOKp(obj)) { \
-      croak("Object not initiliased correctly"); \
+      croak("Object not initialised correctly"); \
       XSRETURN_UNDEF; \
     } \
     cache = INT2PTR(mmap_cache *, SvIV(obj) ); \
