@@ -54,6 +54,7 @@ mmap_cache * mmc_new() {
 
   cache->fh = 0;
   cache->share_file = _mmc_get_def_share_filename(cache);
+  cache->permissions = 0640;
   cache->init_file = def_init_file;
   cache->test_file = def_test_file;
 
@@ -78,6 +79,8 @@ int mmc_set_param(mmap_cache * cache, char * param, char * val) {
     cache->expire_time = atoi(val);
   } else if (!strcmp(param, "share_file")) {
     cache->share_file = val;
+  } else if (!strcmp(param, "permissions")) {
+    cache->permissions = atoi(val);
   } else if (!strcmp(param, "start_slots")) {
     cache->start_slots = atoi(val);
   } else if (!strcmp(param, "catch_deadlocks")) {

@@ -54,7 +54,8 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
   *do_init = 0;
   res = stat(cache->share_file, &statbuf);
   if (res == -1) {
-    res = open(cache->share_file, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_APPEND, 0640);
+    mode_t permissions = (mode_t)cache->permissions;
+    res = open(cache->share_file, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_APPEND, permissions);
     if (res == -1) {
       _mmc_set_error(cache, errno, "Create of share file %s failed", cache->share_file);
       return -1;

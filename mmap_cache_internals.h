@@ -52,6 +52,7 @@ struct mmap_cache {
   int    fh;
 #endif  
   char * share_file;
+  int    permissions;
   int    init_file;
   int    test_file;
   int    cache_not_found;

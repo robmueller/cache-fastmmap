@@ -561,6 +561,7 @@ sub new {
   }
   !ref($share_file) || die "share_file argument was a reference";
   $Self->{share_file} = $share_file;
+  my $permissions = $Args{permissions};
 
   my $init_file = $Args{init_file} ? 1 : 0;
   my $test_file = $Args{test_file} ? 1 : 0;
@@ -708,12 +709,12 @@ sub new {
 
   # Setup cache parameters
   fc_set_param($Cache, 'init_file', $init_file);
-  fc_set_param($Cache, 'init_file', $init_file);
   fc_set_param($Cache, 'test_file', $test_file);
   fc_set_param($Cache, 'page_size', $page_size);
   fc_set_param($Cache, 'num_pages', $num_pages);
   fc_set_param($Cache, 'expire_time', $expire_time);
   fc_set_param($Cache, 'share_file', $share_file);
+  fc_set_param($Cache, 'permissions', $permissions) if defined $permissions;
   fc_set_param($Cache, 'start_slots', $start_slots);
   fc_set_param($Cache, 'catch_deadlocks', $catch_deadlocks);
   fc_set_param($Cache, 'enable_stats', $enable_stats);
