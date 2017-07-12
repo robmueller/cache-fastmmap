@@ -1,5 +1,5 @@
 #ifndef mmap_cache_internals_h
-#define mmap_cache_interanls_h
+#define mmap_cache_internals_h
 
 #ifdef DEBUG
 #define ASSERT(x) assert(x)
