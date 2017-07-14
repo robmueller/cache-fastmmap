@@ -1,5 +1,15 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.46 Fri Jul 14 19:40 2017
+  - Fix tests on older perls (thanks stephanloyd9@gmail.com)
+  - Use File::Spec for temp dir (thanks fraserbn@gmail.com)
+  - Fix mmap_cache_internals.h include guard
+  - Fix get_and_set() always returning 0 for DidStore
+  - Allow setting permission when creating cache file
+  - Tweak leak detection tests
+  - Fix last_access/expire_time checks for impending
+     1500000000 seconds since epoch
+
 1.45 Thu Mar 14 11:10 2017
   - Deprecate raw_values and compress options, add
      new compressor and serializer options to allow

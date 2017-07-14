@@ -293,7 +293,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.45';
+our $VERSION = '1.46';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -1461,7 +1461,7 @@ Rob Mueller L<mailto:cpan@robm.fastmail.fm>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2003-2015 by FastMail Pty Ltd
+Copyright (C) 2003-2017 by FastMail Pty Ltd
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
