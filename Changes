@@ -1,5 +1,10 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.47 Fri Apr 6 11:10 2018
+  - Allow custom serializer or compressor options
+  - Update bugtracker link to github
+    Thanks to toddr@cpan.org
+
 1.46 Fri Jul 14 19:40 2017
   - Fix tests on older perls (thanks stephanloyd9@gmail.com)
   - Use File::Spec for temp dir (thanks fraserbn@gmail.com)
