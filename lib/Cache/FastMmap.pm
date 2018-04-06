@@ -344,11 +344,24 @@ anything other than basic scalar values. Supported values are:
   'storable' for 'Storable'
   'sereal'   for 'Sereal'
   'json'     for 'JSON'
+  [ $s, $d ] for custom serializer/de-serializer
 
 If this parameter has a value the module will attempt to load the
 associated package and then use the API of that package to serialize data
 before storing in the cache, and deserialize it upon retrieval from the
 cache. (default: 'storable')
+
+You can use a custom serializer/de-serializer by passing an array-ref
+with two values. The first should be a subroutine reference that takes
+the data to serialize as a single argument and returns an octet stream
+to store. The second should be a subroutine reference that takes the
+octet stream as a single argument and returns the original data structure.
+
+One thing to note, the data structure passed to the serializer is always
+a *scalar* reference to the original data passed in to the ->set(...)
+call. If your serializer doesn't support that, you might need to
+dereference it first before storing, but rembember to return a reference
+again in the de-serializer.
 
 (Note: Historically this module only supported a boolean value for the
 `raw_values` parameter and defaulted to 0, which meant it used Storable
@@ -364,14 +377,22 @@ Compress the value (but not the key) before storing into the cache, using
 the compression package identified by the value of the parameter. Supported
 values are:
 
-  'zlib'   for 'Compress::Zlib'
-  'lz4'    for 'Compress::LZ4'
-  'snappy' for 'Compress::Snappy'
+  'zlib'     for 'Compress::Zlib'
+  'lz4'      for 'Compress::LZ4'
+  'snappy'   for 'Compress::Snappy'
+  [ $c, $d ] for custom compressor/de-compressor
 
 If this parameter has a value the module will attempt to load the
 associated package and then use the API of that package to compress data
 before storing in the cache, and uncompress it upon retrieval from the
 cache. (default: undef)
+
+You can use a custom compressor/de-compressor by passing an array-ref
+with two values. The first should be a subroutine reference that takes
+the data to compress as a single octet stream argument and returns an
+octet stream to store. The second should be a subroutine reference that
+takes the compressed octet stream as a single argument and returns the
+original uncompressed data.
 
 (Note: Historically this module only supported a boolean value for the
 `compress` parameter and defaulted to use Compress::Zlib. The note for the
@@ -577,7 +598,10 @@ sub new {
   my $serializer = $Args{serializer} // ($Args{raw_values} ? '' : 'storable');
 
   if ($serializer) {
-    if ($serializer eq 'storable') {
+    if (ref $serializer eq 'ARRAY') {
+      $Self->{serialize}   = $serializer->[0];
+      $Self->{deserialize} = $serializer->[1];
+    } elsif ($serializer eq 'storable') {
       eval "require Storable;"
         || die "Could not load serialization package: Storable : $@";
       $Self->{serialize}   = Storable->can("freeze");
@@ -610,12 +634,13 @@ sub new {
   );
 
   if ( $compressor ) {
-    my $compressor_module = $known_compressors{$compressor}
-      || die "Unrecognized value >$compressor< for `compressor` parameter";
+    if (ref $compressor eq 'ARRAY') {
+      $Self->{compress}   = $compressor->[0];
+      $Self->{uncompress} = $compressor->[1];
+    } elsif (my $compressor_module = $known_compressors{$compressor}) {
+      eval "require $compressor_module;"
+        || die "Could not load compression package: $compressor_module : $@";
 
-    if ( ! eval "require $compressor_module;" ) {
-      die "Could not load compression package: $compressor_module : $@";
-    } else {
       # LZ4 and Snappy use same API
       if ($compressor_module eq 'Compress::LZ4' || $compressor_module eq 'Compress::Snappy') {
         $Self->{compress}   = $compressor_module->can("compress");
@@ -626,6 +651,8 @@ sub new {
         my $uncompress = $compressor_module->can("memGunzip");
         $Self->{uncompress} = sub { &$uncompress(my $Tmp = shift) };
       }
+    } else {
+      die "Unrecognized value >$compressor< for `compressor` parameter";
     }
   }
 
