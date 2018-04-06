@@ -1,11 +1,25 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         Cache-FastMmap
-version:      1.46
-version_from: FastMmap.pm
-installdirs:  site
+---
+abstract: "Uses an mmap'ed file to act as a shared memory interprocess cache"
+author:
+  - 'Rob Mueller <cpan@robm.fastmail.fm>'
+build_requires:
+  ExtUtils::MakeMaker: 0
+configure_requires:
+  ExtUtils::MakeMaker: 0
+dynamic_config: 1
+generated_by: 'ExtUtils::MakeMaker version 6.66, CPAN::Meta::Converter version 2.133380'
+license: unknown
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: Cache-FastMmap
+no_index:
+  directory:
+    - t
+    - inc
 requires:
-    Storable:                      0
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30
+  Storable: 0
+resources:
+  bugtracker: https://github.com/robmueller/cache-fastmmap/issues
+  repository: https://github.com/robmueller/cache-fastmmap
+version: 1.46
