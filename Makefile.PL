@@ -14,6 +14,7 @@ WriteMakefile(
     'OBJECT'        => 'FastMmap.o mmap_cache.o ' . ($^O eq 'MSWin32' ? 'win32.o' : 'unix.o'),
     'META_MERGE'    => {
         'resources' => {
+            'bugtracker' => 'https://github.com/robmueller/cache-fastmmap/issues',
             'repository' => 'https://github.com/robmueller/cache-fastmmap',
         },
     },
