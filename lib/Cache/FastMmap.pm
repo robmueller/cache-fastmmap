@@ -595,7 +595,8 @@ sub new {
   }
 
   # Serialise stored values?
-  my $serializer = $Args{serializer} // ($Args{raw_values} ? '' : 'storable');
+  my $serializer = $Args{serializer};
+  $serializer = ($Args{raw_values} ? '' : 'storable') if !defined $serializer;
 
   if ($serializer) {
     if (ref $serializer eq 'ARRAY') {
@@ -625,7 +626,8 @@ sub new {
   }
 
   # Compress stored values?
-  my $compressor = $Args{compressor} // ($Args{compress} ? 'zlib' : 0);
+  my $compressor = $Args{compressor};
+  $compressor = ($Args{compress} ? 'zlib' : 0) if !defined $compressor;
 
   my %known_compressors = (
     zlib   => 'Compress::Zlib',
