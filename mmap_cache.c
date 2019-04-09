@@ -40,28 +40,20 @@ MU32    def_start_slots = 89;
  * 
 */
 mmap_cache * mmc_new() {
-  mmap_cache * cache = (mmap_cache *)malloc(sizeof(mmap_cache));
+  mmap_cache * cache = (mmap_cache *)calloc(1, sizeof(mmap_cache));
 
-  cache->mm_var = 0;
   cache->p_cur = -1;
 
   cache->c_num_pages = def_c_num_pages;
   cache->c_page_size = def_c_page_size;
-  cache->c_size = 0;
 
   cache->start_slots = def_start_slots;
   cache->expire_time = def_expire_time;
 
-  cache->fh = 0;
   cache->share_file = _mmc_get_def_share_filename(cache);
   cache->permissions = 0640;
   cache->init_file = def_init_file;
   cache->test_file = def_test_file;
-
-  cache->catch_deadlocks = 0;
-  cache->enable_stats = 0;
-
-  cache->last_error = 0;
 
   return cache;
 }
