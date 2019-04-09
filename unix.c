@@ -62,13 +62,12 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
     }
 
     /* Fill file with 0's */
-    tmp = malloc(cache->c_page_size);
+    tmp = calloc(1, cache->c_page_size);
     if (!tmp) {
-      _mmc_set_error(cache, errno, "Malloc of tmp space failed");
+      _mmc_set_error(cache, errno, "Calloc of tmp space failed");
       return -1;
     }
 
-    memset(tmp, 0, cache->c_page_size);
     for (i = 0; i < cache->c_num_pages; i++) {
       int written = write(res, tmp, cache->c_page_size);
       if (written < 0) {

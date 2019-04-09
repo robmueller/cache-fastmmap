@@ -616,7 +616,7 @@ int mmc_calc_expunge(
     MU32 * slot_end = slot_ptr + num_slots;
 
     /* Store pointers to used slots */
-    MU32 ** copy_base_det = (MU32 **)malloc(sizeof(MU32 *) * used_slots);
+    MU32 ** copy_base_det = (MU32 **)calloc(used_slots, sizeof(MU32 *));
     MU32 ** copy_base_det_end = copy_base_det + used_slots;
     MU32 ** copy_base_det_out = copy_base_det;
     MU32 ** copy_base_det_in = copy_base_det + used_slots;
@@ -728,11 +728,11 @@ int mmc_do_expunge(
 
   /* Build new slots data and KV data */
   MU32 slot_data_size = new_num_slots * 4;
-  MU32 * new_slot_data = (MU32 *)malloc(slot_data_size);
+  MU32 * new_slot_data = (MU32 *)calloc(1, slot_data_size);
 
   MU32 page_data_size = cache->c_page_size - new_num_slots * 4 - P_HEADERSIZE;
 
-  void * new_kv_data = malloc(page_data_size);
+  void * new_kv_data = calloc(1, page_data_size);
   MU32 new_offset = 0;
 
   /* Start all new slots empty */
@@ -838,11 +838,9 @@ void mmc_reset_page_details(mmap_cache * cache) {
  *
 */
 mmap_cache_it * mmc_iterate_new(mmap_cache * cache) {
-  mmap_cache_it * it = (mmap_cache_it *)malloc(sizeof(mmap_cache_it));
+  mmap_cache_it * it = (mmap_cache_it *)calloc(1, sizeof(mmap_cache_it));
   it->cache = cache;
   it->p_cur = -1;
-  it->slot_ptr = 0;
-  it->slot_ptr_end = 0;
 
   return it;
 }
