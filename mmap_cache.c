@@ -109,7 +109,7 @@ int mmc_get_param(mmap_cache * cache, char * param) {
 */
 int mmc_init(mmap_cache * cache) {
   int i, do_init;
-  MU32 c_num_pages, c_page_size, c_size, start_slots;
+  MU32 c_num_pages, c_page_size, c_size;
 
   /* Need a share file */
   if (!cache->share_file) {
@@ -124,8 +124,7 @@ int mmc_init(mmap_cache * cache) {
   c_page_size = cache->c_page_size;
   ASSERT(c_page_size >= 1024 && c_page_size <= 16*1024*1024);
 
-  start_slots = cache->start_slots;
-  ASSERT(start_slots >= 10 && start_slots <= 500);
+  ASSERT(cache->start_slots >= 10 && cache->start_slots <= 500);
 
   cache->c_size = c_size = c_num_pages * c_page_size;
 
@@ -629,7 +628,7 @@ int mmc_calc_expunge(
     for (; slot_ptr != slot_end; slot_ptr++) {
       MU32 data_offset = *slot_ptr;
       MU32 * base_det = S_Ptr(cache->p_base, data_offset);
-      MU32 expire_time, flags, kvlen;
+      MU32 expire_time, kvlen;
 
       /* Ignore if if free slot */
       if (data_offset <= 1) {
@@ -644,7 +643,6 @@ int mmc_calc_expunge(
 
       /* Definitely out if expired, and not dirty */
       expire_time = S_ExpireTime(base_det);
-      flags = S_Flags(base_det);
       if (expire_time && now >= expire_time) {
         *copy_base_det_out++ = base_det;
         continue;
