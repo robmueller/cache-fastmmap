@@ -71,10 +71,12 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
     for (i = 0; i < cache->c_num_pages; i++) {
       int written = write(res, tmp, cache->c_page_size);
       if (written < 0) {
+        free(tmp);
         _mmc_set_error(cache, errno, "Write to share file %s failed", cache->share_file);
         return -1;
       }
       if (written < cache->c_page_size) {
+        free(tmp);
         _mmc_set_error(cache, errno, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
         return -1;
       }
