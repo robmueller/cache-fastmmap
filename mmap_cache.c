@@ -40,28 +40,20 @@ MU32    def_start_slots = 89;
  * 
 */
 mmap_cache * mmc_new() {
-  mmap_cache * cache = (mmap_cache *)malloc(sizeof(mmap_cache));
+  mmap_cache * cache = (mmap_cache *)calloc(1, sizeof(mmap_cache));
 
-  cache->mm_var = 0;
   cache->p_cur = -1;
 
   cache->c_num_pages = def_c_num_pages;
   cache->c_page_size = def_c_page_size;
-  cache->c_size = 0;
 
   cache->start_slots = def_start_slots;
   cache->expire_time = def_expire_time;
 
-  cache->fh = 0;
   cache->share_file = _mmc_get_def_share_filename(cache);
   cache->permissions = 0640;
   cache->init_file = def_init_file;
   cache->test_file = def_test_file;
-
-  cache->catch_deadlocks = 0;
-  cache->enable_stats = 0;
-
-  cache->last_error = 0;
 
   return cache;
 }
@@ -117,7 +109,7 @@ int mmc_get_param(mmap_cache * cache, char * param) {
 */
 int mmc_init(mmap_cache * cache) {
   int i, do_init;
-  MU32 c_num_pages, c_page_size, c_size, start_slots;
+  MU32 c_num_pages, c_page_size, c_size;
 
   /* Need a share file */
   if (!cache->share_file) {
@@ -132,8 +124,7 @@ int mmc_init(mmap_cache * cache) {
   c_page_size = cache->c_page_size;
   ASSERT(c_page_size >= 1024 && c_page_size <= 16*1024*1024);
 
-  start_slots = cache->start_slots;
-  ASSERT(start_slots >= 10 && start_slots <= 500);
+  ASSERT(cache->start_slots >= 10 && cache->start_slots <= 500);
 
   cache->c_size = c_size = c_num_pages * c_page_size;
 
@@ -624,7 +615,7 @@ int mmc_calc_expunge(
     MU32 * slot_end = slot_ptr + num_slots;
 
     /* Store pointers to used slots */
-    MU32 ** copy_base_det = (MU32 **)malloc(sizeof(MU32 *) * used_slots);
+    MU32 ** copy_base_det = (MU32 **)calloc(used_slots, sizeof(MU32 *));
     MU32 ** copy_base_det_end = copy_base_det + used_slots;
     MU32 ** copy_base_det_out = copy_base_det;
     MU32 ** copy_base_det_in = copy_base_det + used_slots;
@@ -637,7 +628,7 @@ int mmc_calc_expunge(
     for (; slot_ptr != slot_end; slot_ptr++) {
       MU32 data_offset = *slot_ptr;
       MU32 * base_det = S_Ptr(cache->p_base, data_offset);
-      MU32 expire_time, flags, kvlen;
+      MU32 expire_time, kvlen;
 
       /* Ignore if if free slot */
       if (data_offset <= 1) {
@@ -652,7 +643,6 @@ int mmc_calc_expunge(
 
       /* Definitely out if expired, and not dirty */
       expire_time = S_ExpireTime(base_det);
-      flags = S_Flags(base_det);
       if (expire_time && now >= expire_time) {
         *copy_base_det_out++ = base_det;
         continue;
@@ -736,11 +726,11 @@ int mmc_do_expunge(
 
   /* Build new slots data and KV data */
   MU32 slot_data_size = new_num_slots * 4;
-  MU32 * new_slot_data = (MU32 *)malloc(slot_data_size);
+  MU32 * new_slot_data = (MU32 *)calloc(1, slot_data_size);
 
   MU32 page_data_size = cache->c_page_size - new_num_slots * 4 - P_HEADERSIZE;
 
-  void * new_kv_data = malloc(page_data_size);
+  void * new_kv_data = calloc(1, page_data_size);
   MU32 new_offset = 0;
 
   /* Start all new slots empty */
@@ -846,11 +836,9 @@ void mmc_reset_page_details(mmap_cache * cache) {
  *
 */
 mmap_cache_it * mmc_iterate_new(mmap_cache * cache) {
-  mmap_cache_it * it = (mmap_cache_it *)malloc(sizeof(mmap_cache_it));
+  mmap_cache_it * it = (mmap_cache_it *)calloc(1, sizeof(mmap_cache_it));
   it->cache = cache;
   it->p_cur = -1;
-  it->slot_ptr = 0;
-  it->slot_ptr_end = 0;
 
   return it;
 }

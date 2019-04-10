@@ -300,8 +300,6 @@ NO_OUTPUT void
 fc_reset_page_details(obj)
     SV * obj;
   INIT:
-    MU32 nreads = 0, nreadhits = 0;
-
     FC_ENTRY
 
   CODE:
@@ -500,7 +498,7 @@ fc_set(obj, key, val)
     SV * key;
     SV * val;
   INIT:
-    int key_len, val_len, found;
+    int key_len, val_len;
     void * key_ptr, * val_ptr;
     MU32 hash_page, hash_slot, flags = 0;
     STRLEN pl_key_len, pl_val_len;
