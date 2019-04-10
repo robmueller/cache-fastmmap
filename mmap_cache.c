@@ -1132,7 +1132,7 @@ int  _mmc_test_page(mmap_cache * cache) {
       MU32 kvlen = S_SlotLen(base_det);
       ROUNDLEN(kvlen);
 
-      ASSERT(last_access > 1000000000)
+      ASSERT(last_access > 1000000000);
       if (!(last_access > 1000000000)) return 0;
       ASSERT(expire_time == 0 || (expire_time > 1000000000));
       if (!(expire_time == 0 || (expire_time > 1000000000))) return 0;
