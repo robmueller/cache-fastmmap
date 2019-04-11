@@ -19,7 +19,7 @@ struct mmap_cache {
   void * p_base;
   MU32 * p_base_slots;
   MU32    p_cur;
-  MU32    p_offset;
+  MU64    p_offset;
 
   MU32    p_num_slots;
   MU32    p_free_slots;
@@ -34,7 +34,7 @@ struct mmap_cache {
   /* General page details */
   MU32    c_num_pages;
   MU32    c_page_size;
-  MU32    c_size;
+  MU64    c_size;
 
   /* Pointer to mmapped area */
   void * mm_var;
@@ -122,7 +122,7 @@ extern char* _mmc_get_def_share_filename(mmap_cache * cache);
 int mmc_open_cache_file(mmap_cache* cache, int * do_init);
 int mmc_map_memory(mmap_cache* cache);
 int mmc_unmap_memory(mmap_cache* cache);
-int mmc_lock_page(mmap_cache* cache, MU32 p_offset);
+int mmc_lock_page(mmap_cache* cache, MU64 p_offset);
 int mmc_unlock_page(mmap_cache * cache);
 int mmc_close_fh(mmap_cache* cache);
 int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...);

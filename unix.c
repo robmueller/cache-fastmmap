@@ -141,7 +141,7 @@ int mmc_close_fh(mmap_cache* cache) {
   return res;
 }
 
-int mmc_lock_page(mmap_cache* cache, MU32 p_offset) {
+int mmc_lock_page(mmap_cache* cache, MU64 p_offset) {
   struct flock lock;
   int old_alarm, alarm_left = 10;
   int lock_res = -1;

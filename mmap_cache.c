@@ -109,7 +109,8 @@ int mmc_get_param(mmap_cache * cache, char * param) {
 */
 int mmc_init(mmap_cache * cache) {
   int i, do_init;
-  MU32 c_num_pages, c_page_size, c_size;
+  MU32 c_num_pages, c_page_size;
+  MU64 c_size;
 
   /* Need a share file */
   if (!cache->share_file) {
@@ -122,11 +123,11 @@ int mmc_init(mmap_cache * cache) {
   ASSERT(c_num_pages >= 1 && c_num_pages <= 1000);
 
   c_page_size = cache->c_page_size;
-  ASSERT(c_page_size >= 1024 && c_page_size <= 16*1024*1024);
+  ASSERT(c_page_size >= 1024 && c_page_size <= 1024*1024*1024);
 
   ASSERT(cache->start_slots >= 10 && cache->start_slots <= 500);
 
-  cache->c_size = c_size = c_num_pages * c_page_size;
+  cache->c_size = c_size = (MU64)c_num_pages * c_page_size;
 
   if ( mmc_open_cache_file(cache, &do_init) == -1) return -1;
 
@@ -235,7 +236,7 @@ char * mmc_error(mmap_cache * cache) {
  *
 */
 int mmc_lock(mmap_cache * cache, MU32 p_cur) {
-  MU32 p_offset;
+  MU64 p_offset;
   void * p_ptr;
 
   /* Argument sanity check */
@@ -247,13 +248,13 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
     return -1 + _mmc_set_error(cache, 0, "page %u is already locked, can't lock multiple pages", cache->p_cur);
 
   /* Setup page details */
-  p_offset = p_cur * cache->c_page_size;
+  p_offset = (MU64)p_cur * cache->c_page_size;
   p_ptr = PTR_ADD(cache->mm_var, p_offset);
 
   if (mmc_lock_page(cache, p_offset) == -1) return -1;
 
   if (!(P_Magic(p_ptr) == 0x92f7e3b1))
-    return -1 + _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %u", p_cur, p_offset);
+    return -1 + _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %llu", p_cur, p_offset);
 
   /* Copy to cache structure */
   cache->p_num_slots = P_NumSlots(p_ptr);
@@ -283,7 +284,7 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
 
   /* Setup page pointers */
   cache->p_cur = p_cur;
-  cache->p_offset = p_cur * cache->c_page_size;
+  cache->p_offset = p_offset;
   cache->p_base = p_ptr;
   cache->p_base_slots = PTR_ADD(p_ptr, P_HEADERSIZE);
 
@@ -1075,7 +1076,7 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
 
   for (p_cur = start_page; p_cur < end_page; p_cur++) {
     /* Setup page details */
-    MU32 p_offset = p_cur * cache->c_page_size;
+    MU64 p_offset = (MU64)p_cur * cache->c_page_size;
     void * p_ptr = PTR_ADD(cache->mm_var, p_offset);
 
     /* Initialise to all 0's */

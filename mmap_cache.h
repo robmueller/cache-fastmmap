@@ -172,6 +172,8 @@
  * 
 */
 
+#include <stdint.h>
+
 /* Main cache structure passed as a pointer to each function */
 typedef struct mmap_cache mmap_cache;
 
@@ -179,7 +181,13 @@ typedef struct mmap_cache mmap_cache;
 typedef struct mmap_cache_it mmap_cache_it;
 
 /* Unsigned 32 bit integer */
-typedef unsigned int MU32;
+typedef uint32_t MU32;
+
+/* Unsigned 64 bit integer */
+typedef uint64_t MU64;
+
+/* Magic value for no p_cur */
+#define NOPAGE (~(MU32)0)
 
 /* Initialisation/closing/error functions */
 mmap_cache * mmc_new();
