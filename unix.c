@@ -77,7 +77,7 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
       }
       if (written < cache->c_page_size) {
         free(tmp);
-        _mmc_set_error(cache, errno, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
+        _mmc_set_error(cache, 0, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
         return -1;
       }
     }
@@ -114,8 +114,8 @@ int mmc_map_memory(mmap_cache* cache) {
   /* Map file into memory */
   cache->mm_var = mmap(0, cache->c_size, PROT_READ | PROT_WRITE, MAP_SHARED, cache->fh, 0);
   if (cache->mm_var == (void *)MAP_FAILED) {
-    mmc_close_fh(cache);
     _mmc_set_error(cache, errno, "Mmap of shared file %s failed", cache->share_file);
+    mmc_close_fh(cache);
     return -1;
   }
 
