@@ -1,5 +1,12 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.48 Thu Apr 11 11:30 2019
+  - Remove use of // so we should work on 5.8 again
+  - Replace -1 with a NOPAGE constant
+  - Use 64bit offsets so we support caches > 4G
+  - Various valgrind code fixes
+    Thanks to oschwald@gmail.com
+
 1.47 Fri Apr 6 11:10 2018
   - Allow custom serializer or compressor options
   - Update bugtracker link to github
