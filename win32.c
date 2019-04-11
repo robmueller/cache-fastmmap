@@ -189,7 +189,7 @@ int mmc_unlock_page(mmap_cache* cache) {
     UnlockFileEx(cache->fh, 0, cache->c_page_size, 0, &lock);
     
     /* Set to bad value while page not locked */
-    cache->p_cur = ~0; /* ~0 = -1, but unsigned */    
+    cache->p_cur = NOPAGE;
 }
 
 /*

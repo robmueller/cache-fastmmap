@@ -201,7 +201,7 @@ int mmc_unlock_page(mmap_cache * cache) {
   fcntl(cache->fh, F_SETLKW, &lock);
 
   /* Set to bad value while page not locked */
-  cache->p_cur = -1;
+  cache->p_cur = NOPAGE;
 
   return 0;
 }
