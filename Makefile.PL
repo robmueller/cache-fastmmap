@@ -6,6 +6,7 @@ WriteMakefile(
     'VERSION_FROM'  => 'lib/Cache/FastMmap.pm',
     'ABSTRACT_FROM' => 'lib/Cache/FastMmap.pm',
     'AUTHOR'        => 'Rob Mueller <cpan@robm.fastmail.fm>',
+    'LICENSE'       => 'perl',
     'PREREQ_PM'     => {
       'Storable' => 0,
     },
