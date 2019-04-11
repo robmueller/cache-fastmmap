@@ -395,7 +395,7 @@ fc_get_keys(obj, mode)
     it = mmc_iterate_new(cache);
 
     /* Iterate over all items */
-    while (entry_ptr = mmc_iterate_next(it)) {
+    while ((entry_ptr = mmc_iterate_next(it))) {
       SV *  key;
       mmc_get_details(cache, entry_ptr,
         &key_ptr, &key_len, &val_ptr, &val_len,
