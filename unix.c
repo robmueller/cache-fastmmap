@@ -22,6 +22,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 #include <errno.h>
 #include <stdarg.h>
 #include "mmap_cache.h"
@@ -33,66 +34,60 @@ char* _mmc_get_def_share_filename(mmap_cache * cache)
 }
 
 int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
-  int res, i, fh;
-  void * tmp;
+  int res, fh;
   struct stat statbuf;
-
-  /* Check if file exists */
-  res = stat(cache->share_file, &statbuf);
-
-  /* Remove if different size or remove requested */
-  if (!res &&
-      (cache->init_file || (statbuf.st_size != cache->c_size))) {
-    res = remove(cache->share_file);
-    if (res == -1 && errno != ENOENT) {
-      _mmc_set_error(cache, errno, "Unlink of existing share file %s failed", cache->share_file);
-      return -1;
-    }
-  }
 
   /* Create file if it doesn't exist */
   *do_init = 0;
-  res = stat(cache->share_file, &statbuf);
+  mode_t permissions = (mode_t)cache->permissions;
+  fh = open(cache->share_file, O_RDWR | O_CREAT, permissions);
+  if (fh == -1) {
+    _mmc_set_error(cache, errno, "Opening of share file %s failed", cache->share_file);
+    return -1;
+  }
+
+  struct flock fl = { .l_type = F_WRLCK, .l_whence = SEEK_SET};
+
+  // Try to obtain an exclusive lock
+  res = fcntl(fh, F_SETLKW, &fl);
   if (res == -1) {
-    mode_t permissions = (mode_t)cache->permissions;
-    res = open(cache->share_file, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_APPEND, permissions);
+    _mmc_set_error(cache, errno, "Locking of share file %s failed", cache->share_file);
+    close(fh);
+    return -1;
+  }
+
+  res = fstat(fh, &statbuf);
+  if (res == -1) {
+    _mmc_set_error(cache, errno, "Getting size of share file %s failed", cache->share_file);
+    close(fh);
+    return -1;
+  }
+
+  /* Remove if different size or remove requested */
+  if (cache->init_file || (statbuf.st_size != cache->c_size)) {
+    res = ftruncate(fh, 0);
+    if (res == -1 && errno != ENOENT) {
+      _mmc_set_error(cache, errno, "Truncating of share file %s failed", cache->share_file);
+      close(fh);
+      return -1;
+    }
+
+    // Fill the file with 0s
+    res = ftruncate(fh, cache->c_size);
     if (res == -1) {
-      _mmc_set_error(cache, errno, "Create of share file %s failed", cache->share_file);
+      _mmc_set_error(cache, errno, "Truncating of share file %s failed", cache->share_file);
+      close(fh);
       return -1;
     }
-
-    /* Fill file with 0's */
-    tmp = calloc(1, cache->c_page_size);
-    if (!tmp) {
-      _mmc_set_error(cache, errno, "Calloc of tmp space failed");
-      return -1;
-    }
-
-    for (i = 0; i < cache->c_num_pages; i++) {
-      int written = write(res, tmp, cache->c_page_size);
-      if (written < 0) {
-        free(tmp);
-        _mmc_set_error(cache, errno, "Write to share file %s failed", cache->share_file);
-        return -1;
-      }
-      if (written < cache->c_page_size) {
-        free(tmp);
-        _mmc_set_error(cache, 0, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
-        return -1;
-      }
-    }
-    free(tmp);
 
     /* Later on initialise page structures */
     *do_init = 1;
-
-    close(res);
   }
-
-  /* Open for reading/writing */
-  fh = open(cache->share_file, O_RDWR);
-  if (fh == -1) {
-    _mmc_set_error(cache, errno, "Open of share file %s failed", cache->share_file);
+  fl.l_type   = F_UNLCK;
+  res = fcntl(fh, F_SETLK, &fl);
+  if (res == -1) {
+    _mmc_set_error(cache, errno, "Unlocking of share file %s failed", cache->share_file);
+    close(fh);
     return -1;
   }
 
