@@ -45,8 +45,7 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
       (cache->init_file || (statbuf.st_size != cache->c_size))) {
     res = remove(cache->share_file);
     if (res == -1 && errno != ENOENT) {
-      _mmc_set_error(cache, errno, "Unlink of existing share file %s failed", cache->share_file);
-      return -1;
+      return _mmc_set_error(cache, errno, "Unlink of existing share file %s failed", cache->share_file);
     }
   }
 
@@ -57,28 +56,24 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
     mode_t permissions = (mode_t)cache->permissions;
     res = open(cache->share_file, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_APPEND, permissions);
     if (res == -1) {
-      _mmc_set_error(cache, errno, "Create of share file %s failed", cache->share_file);
-      return -1;
+      return _mmc_set_error(cache, errno, "Create of share file %s failed", cache->share_file);
     }
 
     /* Fill file with 0's */
     tmp = calloc(1, cache->c_page_size);
     if (!tmp) {
-      _mmc_set_error(cache, errno, "Calloc of tmp space failed");
-      return -1;
+      return _mmc_set_error(cache, errno, "Calloc of tmp space failed");
     }
 
     for (i = 0; i < cache->c_num_pages; i++) {
       int written = write(res, tmp, cache->c_page_size);
       if (written < 0) {
         free(tmp);
-        _mmc_set_error(cache, errno, "Write to share file %s failed", cache->share_file);
-        return -1;
+        return _mmc_set_error(cache, errno, "Write to share file %s failed", cache->share_file);
       }
       if (written < cache->c_page_size) {
         free(tmp);
-        _mmc_set_error(cache, 0, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
-        return -1;
+        return _mmc_set_error(cache, 0, "Write to share file %s failed; short write (%d of %d bytes written)", cache->share_file, written, cache->c_page_size);
       }
     }
     free(tmp);
@@ -92,8 +87,7 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
   /* Open for reading/writing */
   fh = open(cache->share_file, O_RDWR);
   if (fh == -1) {
-    _mmc_set_error(cache, errno, "Open of share file %s failed", cache->share_file);
-    return -1;
+    return _mmc_set_error(cache, errno, "Open of share file %s failed", cache->share_file);
   }
 
   /* Automatically close cache fd on exec */
@@ -130,8 +124,7 @@ int mmc_map_memory(mmap_cache* cache) {
 int mmc_unmap_memory(mmap_cache* cache) {
   int res = munmap(cache->mm_var, cache->c_size);
   if (res == -1) {
-    _mmc_set_error(cache, errno, "Munmap of shared file %s failed", cache->share_file);
-    return -1;
+    return _mmc_set_error(cache, errno, "Munmap of shared file %s failed", cache->share_file);
   }
   return res;
 }
@@ -236,5 +229,5 @@ int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
 
   va_end(ap);
 
-  return 0;
+  return -1;
 }

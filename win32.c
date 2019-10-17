@@ -231,6 +231,6 @@ int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
 
   va_end(ap);
 
-  return 0;
+  return -1;
 }
 

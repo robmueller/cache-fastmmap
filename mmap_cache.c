@@ -80,8 +80,7 @@ int mmc_set_param(mmap_cache * cache, char * param, char * val) {
   } else if (!strcmp(param, "enable_stats")) {
     cache->enable_stats = atoi(val);
   } else {
-    _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
-    return -1;
+    return _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
   }
 
   return 0;
@@ -95,8 +94,7 @@ int mmc_get_param(mmap_cache * cache, char * param) {
   } else if (!strcmp(param, "expire_time")) {
     return (int)cache->expire_time;
   } else {
-    _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
-    return -1;
+    return _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
   }
 }
 
@@ -114,8 +112,7 @@ int mmc_init(mmap_cache * cache) {
 
   /* Need a share file */
   if (!cache->share_file) {
-    _mmc_set_error(cache, 0, "No share file specified");
-    return -1;
+    return _mmc_set_error(cache, 0, "No share file specified");
   }
 
   /* Basic cache params */
@@ -210,8 +207,7 @@ int mmc_close(mmap_cache *cache) {
   if (cache->mm_var) {
     res = mmc_unmap_memory(cache);
     if (res == -1) {
-      _mmc_set_error(cache, errno, "Mmap of shared file %s failed", cache->share_file);
-      return -1;
+      return _mmc_set_error(cache, errno, "Mmap of shared file %s failed", cache->share_file);
     }
   }
 
@@ -241,11 +237,11 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
 
   /* Argument sanity check */
   if (p_cur == NOPAGE || p_cur > cache->c_num_pages)
-    return -1 + _mmc_set_error(cache, 0, "page %u is NOPAGE or larger than number of pages", p_cur);
+    return _mmc_set_error(cache, 0, "page %u is NOPAGE or larger than number of pages", p_cur);
 
   /* Check not already locked */
   if (cache->p_cur != NOPAGE)
-    return -1 + _mmc_set_error(cache, 0, "page %u is already locked, can't lock multiple pages", cache->p_cur);
+    return _mmc_set_error(cache, 0, "page %u is already locked, can't lock multiple pages", cache->p_cur);
 
   /* Setup page details */
   p_offset = (MU64)p_cur * cache->c_page_size;
@@ -254,7 +250,7 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   if (mmc_lock_page(cache, p_offset) == -1) return -1;
 
   if (!(P_Magic(p_ptr) == 0x92f7e3b1))
-    return -1 + _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %llu", p_cur, p_offset);
+    return _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %llu", p_cur, p_offset);
 
   /* Copy to cache structure */
   cache->p_num_slots = P_NumSlots(p_ptr);
@@ -267,13 +263,13 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
 
   /* Reality check */
   if (cache->p_num_slots < 89 || cache->p_num_slots > cache->c_page_size)
-    return -1 + _mmc_set_error(cache, 0, "cache num_slots mistmatch");
+    return _mmc_set_error(cache, 0, "cache num_slots mistmatch");
   if (cache->p_free_slots < 0 || cache->p_free_slots > cache->p_num_slots)
-    return -1 + _mmc_set_error(cache, 0, "cache free slots mustmatch");
+    return _mmc_set_error(cache, 0, "cache free slots mustmatch");
   if (cache->p_old_slots > cache->p_free_slots)
-    return -1 + _mmc_set_error(cache, 0, "cache old slots mistmatch");
+    return _mmc_set_error(cache, 0, "cache old slots mistmatch");
   if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size)
-    return -1 + _mmc_set_error(cache, 0, "cache free data mistmatch");
+    return _mmc_set_error(cache, 0, "cache free data mistmatch");
 
   /* Check page header */
   ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
