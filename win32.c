@@ -158,11 +158,12 @@ int mmc_unmap_memory(mmap_cache* cache) {
   return res;
 }
 
-int mmc_lock_page(mmap_cache* cache, MU32 p_offset) {
+int mmc_lock_page(mmap_cache* cache, MU64 p_offset) {
     OVERLAPPED lock;
     DWORD lock_res, bytesTransfered;
     memset(&lock, 0, sizeof(lock));
-    lock.Offset = p_offset;
+    lock.Offset = (DWORD)(p_offset & 0xffffffff);
+    lock.OffsetHigh = (DWORD)((p_offset >> 32) & 0xffffffff);
     lock.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
   
     if (LockFileEx(cache->fh, 0, 0, cache->c_page_size, 0, &lock) == 0) {
