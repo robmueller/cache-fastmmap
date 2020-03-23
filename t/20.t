@@ -1,8 +1,7 @@
 
 #########################
 
-use Test::More tests => 7;
-BEGIN { use_ok('Cache::FastMmap') };
+use Test::More;
 use strict;
 
 #########################
@@ -10,7 +9,19 @@ use strict;
 # Insert your test code below, the Test::More module is use()ed here so read
 # its man page ( perldoc Test::More ) for help writing this test script.
 
-umask 0000;
+
+if( $^O eq 'MSWin32' ) {
+    plan skip_all => "permissions parameter is not supported on Windows";
+}
+else {
+    plan tests => 7;
+}
+
+require_ok('Cache::FastMmap');
+
+my $old_umask = umask 0000;
+note( 'umask returns undef on this system, test results may not be reliable')
+    unless defined $old_umask;
 
 my $FC = Cache::FastMmap->new(init_file => 1);
 ok( defined $FC );
