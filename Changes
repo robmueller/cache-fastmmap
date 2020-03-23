@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.49 Tue Mar 24 10:15 2020
+  - Fix windows compilation and test warnings
+    Thanks to hvn@radiatorsoftware.com
+
 1.48 Thu Apr 11 11:30 2019
   - Remove use of // so we should work on 5.8 again
   - Replace -1 with a NOPAGE constant
