@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.50 Fri Nov 6 20:40 2020
+  - Allow get_and_set sub to return an options
+    hash passed to the internal set call
+
 1.49 Tue Mar 24 10:15 2020
   - Fix windows compilation and test warnings
     Thanks to hvn@radiatorsoftware.com

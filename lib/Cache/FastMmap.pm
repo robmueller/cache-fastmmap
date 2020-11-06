@@ -281,6 +281,13 @@ module, which is executed as the server is starting and before it
 starts forking children, but you'll probably want to chmod or chown
 the file to the permissions of the apache process.
 
+=head1 RELIABILITY
+
+Cache::FastMmap is being used in an extensive number of systems at
+L<www.fastmail.com> and is regarded as extremely stable and reliable.
+Development has in general slowed because there are currently no
+known bugs and no additional needed features at this time.
+
 =head1 METHODS
 
 =over 4
@@ -293,7 +300,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.49';
+our $VERSION = '1.50';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -886,7 +893,7 @@ sub set {
   return $DidStore;
 }
 
-=item I<get_and_set($Key, $Sub)>
+=item I<get_and_set($Key, $AtomicSub)>
 
 Atomically retrieve and set the value of a Key.
 
@@ -894,23 +901,44 @@ The page is locked while retrieving the $Key and is unlocked only after
 the value is set, thus guaranteeing the value does not change between
 the get and set operations.
 
-$Sub is a reference to a subroutine that is called to calculate the
-new value to store. $Sub gets $Key and the current value
+$AtomicSub is a reference to a subroutine that is called to calculate the
+new value to store. $AtomicSub gets $Key and the current value
 as parameters, and
 should return the new value to set in the cache for the given $Key.
 
-If the subroutine returns an empty list, no value is stored back
+If $AtomicSub returns an empty list, no value is stored back
 in the cache. This avoids updating the expiry time on an entry
 if you want to do a "get if in cache, store if not present" type
 callback.
 
-For example, to atomically increment a value in the cache, you
-can just use:
+If $AtomicSub returns a list, the first value is stored in the
+cache, the second value should be a hash reference of options
+in the same format as would be passed to a C<set()> call.
+
+For example:
+
+=over 4
+
+=item *
+
+To atomically increment a value in the cache
 
   $Cache->get_and_set($Key, sub { return ++$_[1]; });
 
-In scalar context, the return value from this function is the *new* value
-stored back into the cache.
+=item *
+
+To add an item to a cached list and set the expiry time
+depending on the size of the list
+
+  $Cache->get_and_set($Key, sub ($, $v) {
+    push @$v, $item;
+    return ($v, { expire_time => @$v > 2 ? '10s' : '2m' });
+  });
+
+=back
+
+In scalar context the return value from C<get_and_set()>, is the
+*new* value stored back into the cache.
 
 In list context, a two item array is returned; the new value stored
 back into the cache and a boolean that's true if the value was stored
@@ -944,8 +972,8 @@ sub get_and_set {
 
   my $DidStore = 0;
   if (@NewValue) {
-    ($Value) = @NewValue;
-    $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock });
+    ($Value, my $Opts) = @NewValue;
+    $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock, %{$Opts || {}} });
   }
 
   return wantarray ? ($Value, $DidStore) : $Value;

@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 46;
+use Test::More tests => 50;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -28,6 +28,10 @@ is( $FC2->get('def'), '123',    "expire get 8");
 is( $FC2->get('ghi'), '123',    "expire get 9");
 is( $FC2->get('jkl'), '123',    "expire get 10");
 
+ok( $FC2->set('mno', '123'), "expire get_and_set 1");
+is( scalar $FC2->get_and_set('mno', sub { return ("456", { expire_time => 1 }) }), '456', "expire get_and_set 2");
+is( $FC2->get('mno'), '456', "expire get_and_set 3");
+
 sleep(2);
 
 ok( $FC->set('def', '456'),    "expire set 11");
@@ -38,6 +42,8 @@ is( $FC2->get('abc'), '123',    "expire get 14");
 is( $FC2->get('def'), '123',    "expire get 15");
 ok( !defined $FC2->get('ghi'),  "expire get 16");
 is( $FC2->get('jkl'), '123',    "expire get 17");
+
+ok( !defined $FC2->get('mno'),  "expire get_and_set 4");
 
 sleep(2);
 
