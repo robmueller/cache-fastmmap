@@ -24,6 +24,7 @@ jobs:
       - name: Regular tests
         run: |
             cpanm --installdeps --notest .
+            cpanm JSON
             perl Makefile.PL
             make
             make test
