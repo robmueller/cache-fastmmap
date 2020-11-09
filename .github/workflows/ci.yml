@@ -24,7 +24,7 @@ jobs:
       - name: Regular tests
         run: |
             cpanm --installdeps --notest .
-            cpanm JSON
+            cpanm JSON Sereal::Encoder
             perl Makefile.PL
             make
             make test
