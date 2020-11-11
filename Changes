@@ -1,5 +1,12 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.51 Wed Nov 11 17:15 2020
+  - Skip JSON/Sereal tests if modules not present
+  - Updated .gitignore
+    Thanks to https://github.com/szabgab/
+  - GitHub Actions config file
+    Thanks to https://github.com/szabgab/
+
 1.50 Fri Nov 6 20:40 2020
   - Allow get_and_set sub to return an options
     hash passed to the internal set call
