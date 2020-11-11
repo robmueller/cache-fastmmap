@@ -1,3 +1,10 @@
-Makefile.old
-Cache/FastMmap/Makefile.old
-.shipit
+FastMmap.bs
+FastMmap.c
+FastMmap.o
+MYMETA.json
+MYMETA.yml
+Makefile
+blib/
+mmap_cache.o
+pm_to_blib
+unix.o
