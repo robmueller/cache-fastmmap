@@ -1,8 +1,18 @@
 
 #########################
 
-use Test::More tests => 7;
-BEGIN { use_ok('Cache::FastMmap') };
+use Test::More;
+
+BEGIN {
+  eval "use JSON (); use Sereal ();";
+  if ($@) {
+    plan skip_all => 'No JSON/Sereal, no json/sereal storage tests';
+  } else {
+    plan tests => 7;
+  }
+  use_ok('Cache::FastMmap');
+}
+
 use Time::HiRes qw(time);
 use Data::Dumper;
 use strict;
