@@ -4,6 +4,7 @@ author:
   - 'Rob Mueller <cpan@robm.fastmail.fm>'
 build_requires:
   ExtUtils::MakeMaker: 0
+  Test::Deep: 0
 configure_requires:
   ExtUtils::MakeMaker: 0
 dynamic_config: 1
