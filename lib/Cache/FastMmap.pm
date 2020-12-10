@@ -300,7 +300,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.51';
+our $VERSION = '1.52';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -784,7 +784,7 @@ sub get {
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
   my $Unlock = $Self->_lock_page($HashPage);
-  my ($Val, $Flags, $Found) = fc_read($Cache, $HashSlot, $_[1]);
+  my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $_[1]);
 
   # Value not found, check underlying data store
   if (!$Found && (my $read_cb = $Self->{read_cb})) {
@@ -797,9 +797,7 @@ sub get {
     $Unlock = $Self->_lock_page($HashPage) if $Self->{allow_recursive};
 
     # Pass on any error
-    if ($Err) {
-      die $Err;
-    }
+    die $Err if $Err;
 
     # If we found it, or want to cache not-found, store back into our cache
     if (defined $Val || $Self->{cache_not_found}) {
@@ -829,7 +827,7 @@ sub get {
   $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
 
   # If explicitly asked to skip unlocking, we return the reference to the unlocker
-  return ($Val, $Unlock) if $SkipUnlock;
+  return ($Val, $Unlock, { expire_on => $ExpireOn }) if $SkipUnlock;
 
   return $Val;
 }
@@ -838,9 +836,18 @@ sub get {
 
 Store specified key/value pair into cache
 
-I<%Options> is optional, and is used by get_and_set() to control
-the locking behaviour. For now, you should probably ignore it
-unless you read the code to understand how it works
+I<%Options> is optional. If it's not a hash reference, it's
+assumed to be an explicit expiry time for the key being set,
+this is to make set() compatible with the Cache::Cache interface
+
+If a hash is passed, the only useful entries right now are expire_on to
+set an explicit expiry time for this entry (epoch seconds), or expire_time
+to set an explicit relative future expiry time for this entry in
+seconds/minutes/days in the same format as passed to the new constructor.
+
+Some other options are used internally, such as by get_and_set()
+to control the locking behaviour. For now, you should probably ignore
+it unless you read the code to understand how it works
 
 This method returns true if the value was stored in the cache,
 false otherwise. See the PAGE SIZE AND KEY/VALUE LIMITS section
@@ -855,7 +862,11 @@ sub set {
 
   # Get opts, make compatible with Cache::Cache interface
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
-  my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
+  # expire_on takes precedence, otherwise use expire_time if present
+  my $expire_on = defined($Opts) ? (
+    exists $Opts->{expire_on} ? $Opts->{expire_on} :
+      (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, time): -1)
+  ) : -1;
 
   # Hash value, lock page
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
@@ -879,7 +890,7 @@ sub set {
   $Self->_expunge_page(2, 1, $KVLen);
 
   # Now store into cache
-  my $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_seconds, $write_back ? FC_ISDIRTY : 0);
+  my $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_on, $write_back ? FC_ISDIRTY : 0);
 
   # Unlock page
   $Unlock = undef;
@@ -902,18 +913,18 @@ the value is set, thus guaranteeing the value does not change between
 the get and set operations.
 
 $AtomicSub is a reference to a subroutine that is called to calculate the
-new value to store. $AtomicSub gets $Key and the current value
-as parameters, and
-should return the new value to set in the cache for the given $Key.
+new value to store. $AtomicSub gets $Key, the current value from the
+cache, and an options hash as paramaters. Currently the only option
+passed is the expire_on of the item.
+
+It should return the new value to set in the cache for the given $Key,
+and an optional hash of arguments in the same format as would be passed
+to a C<set()> call.
 
 If $AtomicSub returns an empty list, no value is stored back
 in the cache. This avoids updating the expiry time on an entry
 if you want to do a "get if in cache, store if not present" type
 callback.
-
-If $AtomicSub returns a list, the first value is stored in the
-cache, the second value should be a hash reference of options
-in the same format as would be passed to a C<set()> call.
 
 For example:
 
@@ -923,7 +934,7 @@ For example:
 
 To atomically increment a value in the cache
 
-  $Cache->get_and_set($Key, sub { return ++$_[1]; });
+  $Cache->get_and_set($Key, sub { return $_[1]+1; });
 
 =item *
 
@@ -934,6 +945,15 @@ depending on the size of the list
     push @$v, $item;
     return ($v, { expire_time => @$v > 2 ? '10s' : '2m' });
   });
+
+=item *
+
+To update a counter, but maintain the original expiry time
+
+  $Cache->get_and_set($Key, sub {
+    return ($_[1]+1, { expire_on => $_[2]->{expire_on} );
+  });
+
 
 =back
 
@@ -965,10 +985,10 @@ be unlocked (1.15 onwards)
 sub get_and_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  my ($Value, $Unlock) = $Self->get($_[1], { skip_unlock => 1 });
+  my ($Value, $Unlock, $Opts) = $Self->get($_[1], { skip_unlock => 1 });
 
   # If this throws an error, $Unlock ref will still unlock page
-  my @NewValue = $_[2]->($_[1], $Value);
+  my @NewValue = $_[2]->($_[1], $Value, $Opts);
 
   my $DidStore = 0;
   if (@NewValue) {
@@ -1086,7 +1106,7 @@ date because of the shared access nature of the cache
 If $Mode == 0, an array of keys is returned
 
 If $Mode == 1, then an array of hashrefs, with 'key',
-'last_access', 'expire_time' and 'flags' keys is returned
+'last_access', 'expire_on' and 'flags' keys is returned
 
 If $Mode == 2, then hashrefs also contain 'value' key
 
@@ -1198,7 +1218,7 @@ sub multi_get {
     # Hash key to get slot in this page and read
     my $FinalKey = "$_[1]-$_";
     (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
-    my ($Val, $Flags, $Found) = fc_read($Cache, $HashSlot, $FinalKey);
+    my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $FinalKey);
     next unless $Found;
 
     # If not using raw values, use thaw() to turn data back into object
@@ -1225,7 +1245,11 @@ sub multi_set {
 
   # Get opts, make compatible with Cache::Cache interface
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
-  my $expire_seconds = defined($Opts && $Opts->{expire_time}) ? parse_expire_time($Opts->{expire_time}) : -1;
+  # expire_on takes precedence, otherwise use expire_time if present
+  my $expire_on = defined($Opts) ? (
+    exists $Opts->{expire_on} ? $Opts->{expire_on} :
+      (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, time): -1)
+  ) : -1;
 
   # Hash page key value, lock page
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
@@ -1246,7 +1270,7 @@ sub multi_set {
 
     # Now hash key and store into page
     (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
-    my $DidStore = fc_write($Cache, $HashSlot, $FinalKey, $Val, $expire_seconds, 0);
+    my $DidStore = fc_write($Cache, $HashSlot, $FinalKey, $Val, $expire_on, 0);
   }
 
   # Unlock page
@@ -1312,7 +1336,7 @@ sub _expunge_page {
       $Val = $Uncompress->($Val) if $Uncompress;
       $Val = ${$Deserialize->($Val)} if $Deserialize;
     }
-    eval { $write_cb->($Self->{context}, $_->{key}, $Val, $_->{expire_time}); };
+    eval { $write_cb->($Self->{context}, $_->{key}, $Val, $_->{expire_on}); };
   }
 }
 
@@ -1331,12 +1355,14 @@ sub _lock_page {
   return $Unlock;
 }
 
+my %Times = ('' => 1, s => 1, m => 60, h => 60*60, d => 24*60*60, w => 7*24*60*60);
+
 sub parse_expire_time {
   my $expire_time = shift || '';
-  return 1 if $expire_time eq 'now';
   return 0 if $expire_time eq 'never';
-  my %Times = ('' => 1, s => 1, m => 60, h => 60*60, d => 24*60*60, w => 7*24*60*60);
-  return $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{lc($2)} : 0;
+  return @_ ? shift : 1 if $expire_time eq 'now';
+  my $offset = $expire_time =~ /^(\d+)\s*([mhdws]?)/i ? $1 * $Times{lc($2)} : 0;
+  return $offset + (@_ ? shift : 0);
 }
 
 sub cleanup {
@@ -1488,6 +1514,27 @@ alarms that had been set with sub-second resolution.
 
 So this has now been made an optional feature via the catch_deadlocks
 option passed to new.
+
+=back
+
+=item * From 1.52
+
+=over 4
+
+=item *
+
+The term expire_time was overloaded in the code to sometimes mean
+a relative future time (e.g. as passed to new constructor) or an
+absolute unix epoch (e.g. as returned from get_keys(2)).
+
+To avoid this confusion, the code now uses expire_time to always
+means a relative future time, and expire_on to mean an absolute
+epoch time. You can use either as an optional argument to a
+set() call.
+
+Since expire_time was used in the constructor and is likely more
+commonly used, I changed the result of get_keys(2) so it now
+returns expire_on rather than expire_time.
 
 =back
 
