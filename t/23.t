@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 26;
+use Test::More tests => 27;
 use Test::Deep;
 BEGIN { use_ok('Cache::FastMmap') };
 use Data::Dumper;
@@ -36,11 +36,12 @@ is( $FC->get('baz'), '789ghi',  "get item 3");
 
 sleep 1;
 
-sub cb { return ($_[1].'a', { expire_on => $_[2]->{expire_on} }); };
-sub cb2 { return ($_[1].'a'); };
-is( $FC->get_and_set('foo', \&cb), '123abca',  "get_and_set item 1 after sleep 1");
-is( $FC->get_and_set('bar', \&cb), '456defa',  "get_and_set item 2 after sleep 1");
-is( $FC->get_and_set('baz', \&cb2), '789ghia', "get_and_set item 3 after sleep 1");
+sub cb { return ( (defined $_[1] ? $_[1] : 'boo') . 'a', { expire_on => $_[2]->{expire_on} }); };
+sub cb2 { return ($_[1] . 'a'); };
+is( $FC->get_and_set('foo', \&cb),  '123abca',  "get_and_set item 1 after sleep 1");
+is( $FC->get_and_set('bar', \&cb),  '456defa',  "get_and_set item 2 after sleep 1");
+is( $FC->get_and_set('baz', \&cb2), '789ghia',  "get_and_set item 3 after sleep 1");
+is( $FC->get_and_set('gah', \&cb),  'booa',     "get_and_set item 4 after sleep 1");
 
 my $now = time;
 my @e = $FC->get_keys(2);
@@ -50,6 +51,7 @@ cmp_deeply(
     superhashof({ key => 'foo', value => '123abca', last_access => num($now, 1), expire_on => num($now+1, 1) }),
     superhashof({ key => 'bar', value => '456defa', last_access => num($now, 1), expire_on => num($now+2, 1) }),
     superhashof({ key => 'baz', value => '789ghia', last_access => num($now, 1), expire_on => num($now+3, 1) }),
+    superhashof({ key => 'gah', value => 'booa',    last_access => num($now, 1), expire_on => num($now+3, 1) }),
   ),
   "got expected keys"
 ) || diag explain $now, \@e;
@@ -69,6 +71,7 @@ cmp_deeply(
   bag(
     superhashof({ key => 'bar', value => '456defaa', last_access => num($now, 1), expire_on => num($now+1, 1) }),
     superhashof({ key => 'baz', value => '789ghia',  last_access => num($now, 1), expire_on => num($now+2, 1) }),
+    superhashof({ key => 'gah', value => 'booa',     last_access => num($now-1, 1), expire_on => num($now+2, 1) }),
   ),
   "got expected keys"
 ) || diag explain $now, \@e;
@@ -84,6 +87,7 @@ cmp_deeply(
   \@e,
   bag(
     superhashof({ key => 'baz', value => '789ghia',  last_access => num($now, 1), expire_on => num($now+1, 1) }),
+    superhashof({ key => 'gah', value => 'booa',     last_access => num($now-2, 1), expire_on => num($now+1, 1) }),
   ),
   "got expected keys"
 ) || diag explain $now, \@e;
@@ -103,6 +107,6 @@ cmp_deeply(
 
 $FC->empty(1);
 
-ok( eq_hash(\%BackingStore, { foo => '123abca', bar => '456defaa', baz => '789ghia' }), "items match expire 2");
+ok( eq_hash(\%BackingStore, { foo => '123abca', bar => '456defaa', baz => '789ghia', gah => 'booa' }), "items match expire 2");
 
 

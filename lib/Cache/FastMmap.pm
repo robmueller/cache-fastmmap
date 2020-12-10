@@ -300,7 +300,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.52';
+our $VERSION = '1.53';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -827,7 +827,7 @@ sub get {
   $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
 
   # If explicitly asked to skip unlocking, we return the reference to the unlocker
-  return ($Val, $Unlock, { expire_on => $ExpireOn }) if $SkipUnlock;
+  return ($Val, $Unlock, { $Found ? (expire_on => $ExpireOn) : () }) if $SkipUnlock;
 
   return $Val;
 }
@@ -864,7 +864,7 @@ sub set {
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
   # expire_on takes precedence, otherwise use expire_time if present
   my $expire_on = defined($Opts) ? (
-    exists $Opts->{expire_on} ? $Opts->{expire_on} :
+    defined $Opts->{expire_on} ? $Opts->{expire_on} :
       (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, time): -1)
   ) : -1;
 
@@ -1247,7 +1247,7 @@ sub multi_set {
   my $Opts = defined($_[3]) ? (ref($_[3]) ? $_[3] : { expire_time => $_[3] }) : undef;
   # expire_on takes precedence, otherwise use expire_time if present
   my $expire_on = defined($Opts) ? (
-    exists $Opts->{expire_on} ? $Opts->{expire_on} :
+    defined $Opts->{expire_on} ? $Opts->{expire_on} :
       (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, time): -1)
   ) : -1;
 
