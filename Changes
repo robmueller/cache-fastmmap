@@ -1,5 +1,11 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.53 Thu Dec 10 13:40 2020
+  - Handle expire_on being undef (use cache default) and
+    return undef if existing value not found in cache.
+    Makes get_and_set which passes on expire_on just work
+    in "doesn't exist" case
+
 1.52 Thu Dec 10 12:20 2020
   - Fix bug where a get() on a key that was expired would
      cause that key to be deleted and never written back
