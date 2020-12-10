@@ -32,7 +32,7 @@
  *  // Lock page
  *  mmc_lock(cache, hash_page);
  *  // Get pointer to value data
- *  mmc_read(cache, hash_slot, (void *)key_ptr, (int)key_len, (void **)&val_ptr, (int *)val_len, &flags);
+ *  mmc_read(cache, hash_slot, (void *)key_ptr, (int)key_len, (void **)&val_ptr, (int *)val_len, &expire_time, &flags);
  *  // Unlock page
  *  mmc_unlock(cache);
  *
@@ -43,7 +43,7 @@
  *  // Lock page
  *  mmc_lock(cache, hash_page);
  *  // Get pointer to value data
- *  mmc_write(cache, hash_slot, (void *)key_ptr, (int)key_len, (void *)val_ptr, (int)val_len);
+ *  mmc_write(cache, hash_slot, (void *)key_ptr, (int)key_len, (void *)val_ptr, (int)val_len, expire_time, flags);
  *  // Unlock page
  *  mmc_unlock(cache);
  *
@@ -204,7 +204,7 @@ int mmc_unlock(mmap_cache *);
 int mmc_is_locked(mmap_cache *);
 
 /* Functions for getting/setting/deleting values in current page */
-int mmc_read(mmap_cache *, MU32, void *, int, void **, int *, MU32 *);
+int mmc_read(mmap_cache *, MU32, void *, int, void **, int *, MU32 *, MU32 *);
 int mmc_write(mmap_cache *, MU32, void *, int, void *, int, MU32, MU32);
 int mmc_delete(mmap_cache *, MU32, void *, int, MU32 *);
 

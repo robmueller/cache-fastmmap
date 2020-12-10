@@ -371,7 +371,7 @@ int mmc_hash(
  *   cache_mmap * cache, MU32 hash_slot,
  *   void *key_ptr, int key_len,
  *   void **val_ptr, int *val_len,
- *   MU32 *flags
+ *   MU32 *expire_on, MU32 *flags
  * )
  *
  * Read key from current page
@@ -381,7 +381,7 @@ int mmc_read(
   mmap_cache *cache, MU32 hash_slot,
   void *key_ptr, int key_len,
   void **val_ptr, int *val_len,
-  MU32 *flags
+  MU32 *expire_on_p, MU32 *flags_p
 ) {
   MU32 * slot_ptr;
 
@@ -406,13 +406,13 @@ int mmc_read(
     MU32 * base_det = S_Ptr(cache->p_base, *slot_ptr);
     MU32 now = (MU32)time(0);
 
-    MU32 expire_time = S_ExpireTime(base_det);
+    MU32 expire_on = S_ExpireOn(base_det);
 
     /* Sanity check hash matches */
     ASSERT(S_SlotHash(base_det) == hash_slot);
 
     /* Value expired? */
-    if (expire_time && now > expire_time) {
+    if (expire_on && now >= expire_on) {
 
       /* Delete slot and return not found */
       _mmc_delete_slot(cache, slot_ptr);
@@ -425,7 +425,8 @@ int mmc_read(
     S_LastAccess(base_det) = now;
 
     /* Copy values to pointers */
-    *flags = S_Flags(base_det);
+    *flags_p = S_Flags(base_det);
+    *expire_on_p = expire_on;
     *val_len = S_ValLen(base_det);
     *val_ptr = S_ValPtr(base_det);
 
@@ -442,7 +443,7 @@ int mmc_read(
  *   cache_mmap * cache, MU32 hash_slot,
  *   void *key_ptr, int key_len,
  *   void *val_ptr, int val_len,
- *   MU32 expire_seconds, MU32 flags
+ *   MU32 expire_on, MU32 flags
  * )
  *
  * Write key to current page
@@ -452,7 +453,7 @@ int mmc_write(
   mmap_cache *cache, MU32 hash_slot,
   void *key_ptr, int key_len,
   void *val_ptr, int val_len,
-  MU32 expire_seconds, MU32 flags
+  MU32 expire_on, MU32 flags
 ) {
   int did_store = 0;
   MU32 kvlen = KV_SlotLen(key_len, val_len);
@@ -480,15 +481,14 @@ int mmc_write(
   if (cache->p_free_bytes >= kvlen) {
     MU32 * base_det = PTR_ADD(cache->p_base, cache->p_free_data);
     MU32 now = (MU32)time(0);
-    MU32 expire_time = 0;
 
     /* Calculate expiry time */
-    if (expire_seconds == (MU32)-1) expire_seconds = cache->expire_time;
-    expire_time = expire_seconds ? now + expire_seconds : 0;
+    if (expire_on == (MU32)-1)
+      expire_on = cache->expire_time ? now + cache->expire_time : 0;
 
     /* Store info into slot */
     S_LastAccess(base_det) = now;
-    S_ExpireTime(base_det) = expire_time;
+    S_ExpireOn(base_det) = expire_on;
     S_SlotHash(base_det) = hash_slot;
     S_Flags(base_det) = flags;
     S_KeyLen(base_det) = (MU32)key_len;
@@ -625,7 +625,7 @@ int mmc_calc_expunge(
     for (; slot_ptr != slot_end; slot_ptr++) {
       MU32 data_offset = *slot_ptr;
       MU32 * base_det = S_Ptr(cache->p_base, data_offset);
-      MU32 expire_time, kvlen;
+      MU32 expire_on, kvlen;
 
       /* Ignore if if free slot */
       if (data_offset <= 1) {
@@ -639,8 +639,8 @@ int mmc_calc_expunge(
       }
 
       /* Definitely out if expired, and not dirty */
-      expire_time = S_ExpireTime(base_det);
-      if (expire_time && now >= expire_time) {
+      expire_on = S_ExpireOn(base_det);
+      if (expire_on && now >= expire_on) {
         *copy_base_det_out++ = base_det;
         continue;
       }
@@ -922,7 +922,7 @@ void mmc_iterate_close(mmap_cache_it * it) {
  *   MU32 * base_det,
  *   void ** key_ptr, int * key_len,
  *   void ** val_ptr, int * val_len,
- *   MU32 * last_access, MU32 * expire_time, MU32 * flags
+ *   MU32 * last_access, MU32 * expire_on, MU32 * flags
  * )
  *
  * Given a base_det pointer to entries details
@@ -936,7 +936,7 @@ void mmc_get_details(
   MU32 * base_det,
   void ** key_ptr, int * key_len,
   void ** val_ptr, int * val_len,
-  MU32 * last_access, MU32 * expire_time, MU32 * flags
+  MU32 * last_access, MU32 * expire_on, MU32 * flags
 ) {
   cache = cache;
 
@@ -947,7 +947,7 @@ void mmc_get_details(
   *val_len = S_ValLen(base_det);
 
   *last_access = S_LastAccess(base_det);
-  *expire_time = S_ExpireTime(base_det);
+  *expire_on = S_ExpireOn(base_det);
   *flags = S_Flags(base_det);
 }
 
@@ -1126,7 +1126,7 @@ int  _mmc_test_page(mmap_cache * cache) {
       MU32 * base_det = S_Ptr(cache->p_base, data_offset);
 
       MU32 last_access = S_LastAccess(base_det);
-      MU32 expire_time = S_ExpireTime(base_det);
+      MU32 expire_on = S_ExpireOn(base_det);
       MU32 key_len = S_KeyLen(base_det);
       MU32 val_len = S_ValLen(base_det);
       MU32 kvlen = S_SlotLen(base_det);
@@ -1134,8 +1134,8 @@ int  _mmc_test_page(mmap_cache * cache) {
 
       ASSERT(last_access > 1000000000);
       if (!(last_access > 1000000000)) return 0;
-      ASSERT(expire_time == 0 || (expire_time > 1000000000));
-      if (!(expire_time == 0 || (expire_time > 1000000000))) return 0;
+      ASSERT(expire_on == 0 || (expire_on > 1000000000));
+      if (!(expire_on == 0 || (expire_on > 1000000000))) return 0;
 
       ASSERT(key_len >= 0 && key_len < data_size);
       if (!(key_len >= 0 && key_len < data_size)) return 0;
@@ -1214,7 +1214,7 @@ int _mmc_dump_page(mmap_cache * cache) {
       char key[256], val[256];
 
       printf("LA=%d, ET=%d, HS=%d, FL=%d\n",
-        S_LastAccess(base_det), S_ExpireTime(base_det),
+        S_LastAccess(base_det), S_ExpireOn(base_det),
         S_SlotHash(base_det), S_Flags(base_det));
 
       /* Get data */

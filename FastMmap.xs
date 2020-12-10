@@ -163,6 +163,7 @@ fc_read(obj, hash_slot, key)
   INIT:
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
+    MU32 expire_on = 0;
     MU32 flags = 0;
     STRLEN pl_key_len;
     SV * val;
@@ -176,7 +177,7 @@ fc_read(obj, hash_slot, key)
     key_len = (int)pl_key_len;
 
     /* Get value data pointer */
-    found = mmc_read(cache, (MU32)hash_slot, key_ptr, key_len, &val_ptr, &val_len, &flags);
+    found = mmc_read(cache, (MU32)hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags);
 
     /* If not found, use undef */
     if (found == -1) {
@@ -204,15 +205,16 @@ fc_read(obj, hash_slot, key)
     XPUSHs(val);
     XPUSHs(sv_2mortal(newSViv((IV)flags)));
     XPUSHs(sv_2mortal(newSViv((IV)!found)));
+    XPUSHs(sv_2mortal(newSViv((IV)expire_on)));
 
 
 int
-fc_write(obj, hash_slot, key, val, expire_seconds, in_flags)
+fc_write(obj, hash_slot, key, val, expire_on, in_flags)
     SV * obj;
     U32  hash_slot;
     SV * key;
     SV * val;
-    U32 expire_seconds;
+    U32 expire_on;
     U32 in_flags;
   INIT:
     int key_len, val_len;
@@ -250,7 +252,7 @@ fc_write(obj, hash_slot, key, val, expire_seconds, in_flags)
     }
 
     /* Write value to cache */
-    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU32)expire_seconds, (MU32)in_flags);
+    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU32)expire_on, (MU32)in_flags);
 
   OUTPUT:
     RETVAL
@@ -319,7 +321,7 @@ fc_expunge(obj, mode, wb, len)
 
     void * key_ptr, * val_ptr;
     int key_len, val_len;
-    MU32 last_access, expire_time, flags;
+    MU32 last_access, expire_on, flags;
 
     FC_ENTRY
 
@@ -334,7 +336,7 @@ fc_expunge(obj, mode, wb, len)
         for (item = 0; item < num_expunge; item++) {
           mmc_get_details(cache, to_expunge[item],
             &key_ptr, &key_len, &val_ptr, &val_len,
-            &last_access, &expire_time, &flags);
+            &last_access, &expire_on, &flags);
 
           {
           HV * ih = (HV *)sv_2mortal((SV *)newHV());
@@ -359,11 +361,11 @@ fc_expunge(obj, mode, wb, len)
           }
 
           /* Store in hash ref */
-          hv_store(ih, "key", 3, key, 0); 
+          hv_store(ih, "key", 3, key, 0);
           hv_store(ih, "value", 5, val, 0);
           hv_store(ih, "last_access", 11, newSViv((IV)last_access), 0);
-          hv_store(ih, "expire_time", 11, newSViv((IV)expire_time), 0);
-          hv_store(ih, "flags", 5, newSViv((IV)flags), 0); 
+          hv_store(ih, "expire_on", 9, newSViv((IV)expire_on), 0);
+          hv_store(ih, "flags", 5, newSViv((IV)flags), 0);
 
           /* Create reference to hash */
           XPUSHs(sv_2mortal(newRV((SV *)ih)));
@@ -386,7 +388,7 @@ fc_get_keys(obj, mode)
     MU32 * entry_ptr;
     void * key_ptr, * val_ptr;
     int key_len, val_len;
-    MU32 last_access, expire_time, flags;
+    MU32 last_access, expire_on, flags;
 
     FC_ENTRY
 
@@ -399,7 +401,7 @@ fc_get_keys(obj, mode)
       SV *  key;
       mmc_get_details(cache, entry_ptr,
         &key_ptr, &key_len, &val_ptr, &val_len,
-        &last_access, &expire_time, &flags);
+        &last_access, &expire_on, &flags);
 
       /* Create key SV, and set UTF8'ness if needed */
       key = newSVpvn((const char *)key_ptr, key_len);
@@ -417,10 +419,10 @@ fc_get_keys(obj, mode)
         HV * ih = (HV *)sv_2mortal((SV *)newHV());
 
         /* These things by default */
-        hv_store(ih, "key", 3, key, 0); 
+        hv_store(ih, "key", 3, key, 0);
         hv_store(ih, "last_access", 11, newSViv((IV)last_access), 0);
-        hv_store(ih, "expire_time", 11, newSViv((IV)expire_time), 0);
-        hv_store(ih, "flags", 5, newSViv((IV)flags), 0); 
+        hv_store(ih, "expire_on", 9, newSViv((IV)expire_on), 0);
+        hv_store(ih, "flags", 5, newSViv((IV)flags), 0);
 
         /* Add value to hash-ref if mode 2 */
         if (mode == 2) {
@@ -456,7 +458,7 @@ fc_get(obj, key)
   INIT:
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
-    MU32 hash_page, hash_slot, flags;
+    MU32 hash_page, hash_slot, expire_on, flags;
     STRLEN pl_key_len;
     SV * val;
 
@@ -475,7 +477,7 @@ fc_get(obj, key)
     mmc_lock(cache, hash_page);
 
     /* Get value data pointer */
-    found = mmc_read(cache, hash_slot, key_ptr, key_len, &val_ptr, &val_len, &flags);
+    found = mmc_read(cache, hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags);
 
     /* If not found, use undef */
     if (found == -1) {

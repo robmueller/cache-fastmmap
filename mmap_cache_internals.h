@@ -93,7 +93,7 @@ struct mmap_cache_it {
 #define S_Ptr(b,s)      ((MU32 *)PTR_ADD(b, s))
 
 #define S_LastAccess(s) (*(s+0))
-#define S_ExpireTime(s) (*(s+1))
+#define S_ExpireOn(s)   (*(s+1))
 #define S_SlotHash(s)   (*(s+2))
 #define S_Flags(s)      (*(s+3))
 #define S_KeyLen(s)     (*(s+4))
