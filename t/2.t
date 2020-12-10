@@ -1,7 +1,8 @@
 
 #########################
 
-use Test::More tests => 50;
+use Test::More tests => 51;
+use Test::Deep;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -25,12 +26,25 @@ ok( $FC2->set('ghi', '123', 'now'), "expire set 5");
 ok( $FC2->set('jkl', '123', 'never'), "expire set 6");
 is( $FC2->get('abc'), '123',    "expire get 7");
 is( $FC2->get('def'), '123',    "expire get 8");
-is( $FC2->get('ghi'), '123',    "expire get 9");
+is( $FC2->get('ghi'), undef,    "expire get 9");
 is( $FC2->get('jkl'), '123',    "expire get 10");
 
 ok( $FC2->set('mno', '123'), "expire get_and_set 1");
 is( scalar $FC2->get_and_set('mno', sub { return ("456", { expire_time => 1 }) }), '456', "expire get_and_set 2");
 is( $FC2->get('mno'), '456', "expire get_and_set 3");
+
+my $now = time;
+my @e = $FC2->get_keys(2);
+cmp_deeply(
+  \@e,
+  bag(
+    superhashof({ key => 'abc', value => '123', last_access => num($now, 1), expire_on => num($now+5, 1) }),
+    superhashof({ key => 'def', value => '123', last_access => num($now, 1), expire_on => num($now+3, 1) }),
+    superhashof({ key => 'jkl', value => '123', last_access => num($now, 1), expire_on => 0  }),
+    superhashof({ key => 'mno', value => '456', last_access => num($now, 1), expire_on => num($now+1, 1) }),
+  ),
+  "got expected keys"
+) || diag explain $now, \@e;
 
 sleep(2);
 
