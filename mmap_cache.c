@@ -414,9 +414,7 @@ int mmc_read(
     /* Value expired? */
     if (expire_on && now >= expire_on) {
 
-      /* Delete slot and return not found */
-      _mmc_delete_slot(cache, slot_ptr);
-      ASSERT(*slot_ptr == 1);
+      /* Return not found, but leave slot. Might need writeback */
 
       return -1;
     }
@@ -853,9 +851,11 @@ MU32 * mmc_iterate_next(mmap_cache_it * it) {
   mmap_cache * cache = it->cache;
   MU32 * slot_ptr = it->slot_ptr;
   MU32 * base_det;
+  MU32 expire_on;
+  MU32 now = (MU32)time(0);
 
-  /* If empty slot, keep moving till we find a used one */
-  while (slot_ptr == it->slot_ptr_end || *slot_ptr <= 1) {
+  /* Go until we find a slot or exit */
+  while (1) {
 
     /* End of page ... */
     if (slot_ptr == it->slot_ptr_end) {
@@ -886,12 +886,24 @@ MU32 * mmc_iterate_next(mmap_cache_it * it) {
       continue;
     }
 
-    /* Move to next slot */
-    slot_ptr++;
-  }
+    /* Slot not used */
+    if (*slot_ptr <= 1) {
+      slot_ptr++;
+      continue;
+    }
 
-  /* Get pointer to details for this entry */
-  base_det = S_Ptr(cache->p_base, *slot_ptr);
+    /* Get pointer to details for this entry */
+    base_det = S_Ptr(cache->p_base, *slot_ptr);
+
+    /* Slot expired */
+    expire_on = S_ExpireOn(base_det);
+    if (expire_on && now >= expire_on) {
+      slot_ptr++;
+      continue;
+    }
+
+    break;
+  }
 
   /* Move to the next slot for next iteration */
   it->slot_ptr = ++slot_ptr;
