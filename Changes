@@ -1,5 +1,8 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.54 Sat Dec 12 13:40 2020
+  - Add Test::Deep as dependency to Makefile.PL
+
 1.53 Thu Dec 10 13:40 2020
   - Handle expire_on being undef (use cache default) and
     return undef if existing value not found in cache.

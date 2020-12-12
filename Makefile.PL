@@ -9,6 +9,7 @@ WriteMakefile(
     'LICENSE'       => 'perl',
     'PREREQ_PM'     => {
       'Storable' => 0,
+      'Test::Deep' => 0,
     },
     'LIBS'          => [''],
     'INC'           => '-I.',

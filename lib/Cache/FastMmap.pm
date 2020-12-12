@@ -300,7 +300,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.53';
+our $VERSION = '1.54';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
