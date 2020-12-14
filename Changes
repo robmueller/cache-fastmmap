@@ -1,5 +1,10 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.55 Mon Dec 14 12:10 2020
+  - Add ability to override internal value of 'time'
+    everywhere to make tests that check expiry of items
+    faster and more robust
+
 1.54 Sat Dec 12 13:40 2020
   - Add Test::Deep as dependency to Makefile.PL
 
