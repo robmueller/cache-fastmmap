@@ -309,6 +309,9 @@ XSLoader::load('Cache::FastMmap', $VERSION);
 #  if we have empty_on_exit set
 our %LiveCaches;
 
+# Global time override for testing
+my $time_override;
+
 use constant FC_ISDIRTY => 1;
 
 use File::Spec;
@@ -865,7 +868,7 @@ sub set {
   # expire_on takes precedence, otherwise use expire_time if present
   my $expire_on = defined($Opts) ? (
     defined $Opts->{expire_on} ? $Opts->{expire_on} :
-      (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, time): -1)
+      (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, _time()): -1)
   ) : -1;
 
   # Hash value, lock page
@@ -1248,7 +1251,7 @@ sub multi_set {
   # expire_on takes precedence, otherwise use expire_time if present
   my $expire_on = defined($Opts) ? (
     defined $Opts->{expire_on} ? $Opts->{expire_on} :
-      (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, time): -1)
+      (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, _time()): -1)
   ) : -1;
 
   # Hash page key value, lock page
@@ -1353,6 +1356,16 @@ sub _lock_page {
   });
   fc_lock($Cache, $_[1]);
   return $Unlock;
+}
+
+sub _time {
+  $time_override ? $time_override : time;
+}
+
+sub _set_time_override {
+  my $Time = shift;
+  $time_override = $Time;
+  fc_set_time_override($Time || 0);
 }
 
 my %Times = ('' => 1, s => 1, m => 60, h => 60*60, d => 24*60*60, w => 7*24*60*60);

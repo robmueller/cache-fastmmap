@@ -22,6 +22,13 @@
 #include "mmap_cache.h"
 #include "mmap_cache_internals.h"
 
+/* Global time_override */
+MU32 time_override = 0;
+
+void mmc_set_time_override(MU32 set_time) {
+  time_override = set_time;
+}
+
 /* Default values for a new cache */
 char * def_share_file = "/tmp/sharefile";
 MU32    def_init_file = 0;
@@ -404,7 +411,7 @@ int mmc_read(
   } else {
 
     MU32 * base_det = S_Ptr(cache->p_base, *slot_ptr);
-    MU32 now = (MU32)time(0);
+    MU32 now = time_override ? time_override : (MU32)time(0);
 
     MU32 expire_on = S_ExpireOn(base_det);
 
@@ -478,7 +485,7 @@ int mmc_write(
   /* If there's space, store the key/value in the data section */
   if (cache->p_free_bytes >= kvlen) {
     MU32 * base_det = PTR_ADD(cache->p_base, cache->p_free_data);
-    MU32 now = (MU32)time(0);
+    MU32 now = time_override ? time_override : (MU32)time(0);
 
     /* Calculate expiry time */
     if (expire_on == (MU32)-1)
@@ -617,7 +624,7 @@ int mmc_calc_expunge(
 
     MU32 page_data_size = cache->c_page_size - num_slots * 4 - P_HEADERSIZE;
     MU32 in_slots, data_thresh, used_data = 0;
-    MU32 now = (MU32)time(0);
+    MU32 now = time_override ? time_override : (MU32)time(0);
 
     /* Loop for each existing slot, and store in a list */
     for (; slot_ptr != slot_end; slot_ptr++) {
@@ -852,7 +859,7 @@ MU32 * mmc_iterate_next(mmap_cache_it * it) {
   MU32 * slot_ptr = it->slot_ptr;
   MU32 * base_det;
   MU32 expire_on;
-  MU32 now = (MU32)time(0);
+  MU32 now = time_override ? time_override : (MU32)time(0);
 
   /* Go until we find a slot or exit */
   while (1) {

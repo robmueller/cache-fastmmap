@@ -539,3 +539,11 @@ fc_dump_page(obj);
     _mmc_dump_page(cache);
 
 
+NO_OUTPUT void
+fc_set_time_override(set_time);
+    UV set_time;
+
+  CODE:
+    mmc_set_time_override((MU32)set_time);
+
+

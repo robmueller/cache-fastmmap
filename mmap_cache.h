@@ -189,6 +189,9 @@ typedef uint64_t MU64;
 /* Magic value for no p_cur */
 #define NOPAGE (~(MU32)0)
 
+/* Allow overriding "time" for tests */
+void mmc_set_time_override(MU32);
+
 /* Initialisation/closing/error functions */
 mmap_cache * mmc_new();
 int mmc_init(mmap_cache *);

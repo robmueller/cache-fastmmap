@@ -16,6 +16,9 @@ ok( defined $FC );
 my $FC2 = Cache::FastMmap->new(init_file => 1, expire_time => 5, serializer => '');
 ok( defined $FC2 );
 
+my $epoch = time;
+my $now = $epoch;
+Cache::FastMmap::_set_time_override($now);
 
 ok( $FC->set('abc', '123'),    "expire set 1");
 is( $FC->get('abc'), '123',    "expire get 2");
@@ -33,7 +36,6 @@ ok( $FC2->set('mno', '123'), "expire get_and_set 1");
 is( scalar $FC2->get_and_set('mno', sub { return ("456", { expire_time => 1 }) }), '456', "expire get_and_set 2");
 is( $FC2->get('mno'), '456', "expire get_and_set 3");
 
-my $now = time;
 my @e = $FC2->get_keys(2);
 cmp_deeply(
   \@e,
@@ -44,9 +46,10 @@ cmp_deeply(
     superhashof({ key => 'mno', value => '456', last_access => num($now, 1), expire_on => num($now+1, 1) }),
   ),
   "got expected keys"
-) || diag explain $now, \@e;
+) || diag explain [ $now, \@e ];
 
-sleep(2);
+$now = $epoch+2;
+Cache::FastMmap::_set_time_override($now);
 
 ok( $FC->set('def', '456'),    "expire set 11");
 is( $FC->get('abc'), '123',    "expire get 12");
@@ -59,7 +62,8 @@ is( $FC2->get('jkl'), '123',    "expire get 17");
 
 ok( !defined $FC2->get('mno'),  "expire get_and_set 4");
 
-sleep(2);
+$now = $epoch+4;
+Cache::FastMmap::_set_time_override($now);
 
 ok( !defined $FC->get('abc'),  "expire get 18");
 is( $FC->get('def'), '456',    "expire get 19");
@@ -69,7 +73,8 @@ ok( !defined $FC2->get('def'),  "expire get 21");
 ok( !defined $FC2->get('ghi'),  "expire get 22");
 is( $FC2->get('jkl'), '123',    "expire get 23");
 
-sleep(2);
+$now = $epoch+6;
+Cache::FastMmap::_set_time_override($now);
 
 ok( !defined $FC->get('abc'),  "expire get 24");
 ok( !defined $FC->get('def'),  "expire get 25");

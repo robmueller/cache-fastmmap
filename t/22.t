@@ -24,6 +24,10 @@ my $FC = Cache::FastMmap->new(
   write_action => 'write_back'
 );
 
+my $epoch = time;
+my $now = $epoch;
+Cache::FastMmap::_set_time_override($now);
+
 ok( defined $FC );
 
 ok( $FC->set('foo', '123abc', 1), 'store item 1');
@@ -31,7 +35,8 @@ ok( $FC->set('bar', '456def', 2), 'store item 2');
 is( $FC->get('foo'), '123abc',  "get item 1");
 is( $FC->get('bar'), '456def',  "get item 2");
 
-sleep 1;
+$now = $epoch+1;
+Cache::FastMmap::_set_time_override($now);
 
 is( $FC->get('foo'), undef,     "get item 1 after sleep 1");
 is( $FC->get('bar'), '456def',  "get item 2 after sleep 1");
@@ -40,7 +45,8 @@ $FC->empty(1);
 
 ok( eq_hash(\%BackingStore, { foo => '123abc' }), "items match expire 1" );
 
-sleep 1;
+$now = $epoch+2;
+Cache::FastMmap::_set_time_override($now);
 
 is( $FC->get('foo'), undef,  "get item 1 after sleep 2");
 is( $FC->get('bar'), undef,  "get item 2 after sleep 2");
