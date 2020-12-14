@@ -1,1 +1,10 @@
 ^\.git
+^Cache-FastMmap
+pm_to_blib
+blib
+\.o$
+\.bs$
+^Makefile$
+^FastMmap\.c$
+^MYMETA\.
+^MANIFEST\.bak$
