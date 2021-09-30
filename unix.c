@@ -220,7 +220,7 @@ int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
 
   /* Add system error code if passed */
   if (err) {
-    strncat(errbuf, ": ", 1024);
+    strncat(errbuf, ": ", 1023);
     strncat(errbuf, strerror(err), 1023);
   }
 
