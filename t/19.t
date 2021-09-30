@@ -8,7 +8,7 @@ BEGIN {
   if ($@) {
     plan skip_all => 'No JSON/Sereal, no json/sereal storage tests';
   } else {
-    plan tests => 7;
+    plan tests => 5;
   }
   use_ok('Cache::FastMmap');
 }
@@ -33,8 +33,9 @@ my $StorableTime = DoTests($FCStorable);
 my $JsonTime = DoTests($FCJson);
 my $SerealTime = DoTests($FCSereal);
 
-ok ($StorableTime > $SerealTime, "Sereal faster than storable");
-ok ($StorableTime > $JsonTime, "Json faster than storable");
+# Lets not assume these everywhere as test breakers
+# ok ($StorableTime > $SerealTime, "Sereal faster than storable");
+# ok ($StorableTime > $JsonTime, "Json faster than storable");
 
 sub DoTests {
   my $FC = shift;
