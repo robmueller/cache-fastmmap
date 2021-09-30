@@ -1057,6 +1057,35 @@ sub get_and_remove {
   return wantarray ? ($Value, $DidDel) : $Value;
 }
 
+=item I<expire($Key)>
+
+Explicitly expire the given $Key. For a cache in write-back mode, this
+will cause the item to be written back to the underlying store if dirty,
+otherwise it's the same as removing the item. 
+
+=cut
+sub expire {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  # Hash value, lock page, read result
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
+  my $Unlock = $Self->_lock_page($HashPage);
+  my ($Val, $Flags, $Found) = fc_read($Cache, $HashSlot, $_[1]);
+
+  # If we found it, remove it
+  if ($Found) {
+    (undef, $Flags) = fc_delete($Cache, $HashSlot, $_[1]);
+  }
+  $Unlock = undef;
+
+  # If it's dirty, write it back
+  if (($Flags & FC_ISDIRTY) && (my $write_cb = $Self->{write_cb})) {
+    eval { $write_cb->($Self->{context}, $_[1], $Val); };
+  }
+
+  return $Found;
+}
+
 =item I<clear()>
 
 Clear all items from the cache
