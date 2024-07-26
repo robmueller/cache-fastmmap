@@ -331,6 +331,8 @@ int mmc_unlock(mmap_cache * cache) {
     P_FreeBytes(p_ptr) = cache->p_free_bytes;
     P_NReads(p_ptr) = cache->p_n_reads;
     P_NReadHits(p_ptr) = cache->p_n_read_hits;
+
+    cache->p_changed = 0;
   }
 
   /* Test before unlocking */
@@ -447,8 +449,10 @@ int mmc_read(
     *val_ptr = S_ValPtr(base_det);
 
     /* Increase read hit count */
-    if (cache->enable_stats)
+    if (cache->enable_stats) {
+      cache->p_changed = 1;
       cache->p_n_read_hits++;
+    }
 
     return 0;
   }
