@@ -140,8 +140,13 @@ int mmc_init(mmap_cache * cache) {
 
   /* Initialise pages if new file */
   if (do_init) {
-    _mmc_init_page(cache, -1);
-    
+    for (i = 0; i < cache->c_num_pages; i++) {
+      MU64 p_offset = (MU64)i * cache->c_page_size;
+      mmc_lock_page(cache, p_offset);
+      _mmc_init_page(cache, i);
+      mmc_unlock_page(cache);
+    }
+
     /* Unmap and re-map to stop gtop telling us our memory usage is up */
     if ( mmc_unmap_memory(cache) == -1) return -1;
     if ( mmc_map_memory(cache) == -1) return -1;
@@ -150,23 +155,19 @@ int mmc_init(mmap_cache * cache) {
   /* Test pages in file if asked */
   if (cache->test_file) {
     for (i = 0; i < cache->c_num_pages; i++) {
-      int lock_page = 0, bad_page = 0;
+      int bad_page = 0;
 
       /* Need to lock page, which tests header structure */
       if (mmc_lock(cache, i)) {
+        /* If that failed, assume bad header, so manually lock */
+        MU64 p_offset = (MU64)i * cache->c_page_size;
+        mmc_lock_page(cache, p_offset);
         bad_page = 1;
 
       /* If lock succeeded, test page structure */
       } else {
-        lock_page = 1;
-        if (!_mmc_test_page(cache)) {
+        if (!_mmc_test_page(cache))
           bad_page = 1;
-        }
-      }
-
-      /* If we locked, unlock */
-      if (lock_page) {
-        mmc_unlock(cache);
       }
 
       /* A bad page, initialise it */
@@ -177,6 +178,8 @@ int mmc_init(mmap_cache * cache) {
            are really broken anyway */
         i--;
       }
+
+      mmc_unlock_page(cache);
     }
   }
 
@@ -241,6 +244,7 @@ char * mmc_error(mmap_cache * cache) {
 int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   MU64 p_offset;
   void * p_ptr;
+  int res = 0;
 
   /* Argument sanity check */
   if (p_cur == NOPAGE || p_cur > cache->c_num_pages)
@@ -254,10 +258,13 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   p_offset = (MU64)p_cur * cache->c_page_size;
   p_ptr = PTR_ADD(cache->mm_var, p_offset);
 
-  if (mmc_lock_page(cache, p_offset) == -1) return -1;
+  res = mmc_lock_page(cache, p_offset);
+  if (res) return res;
 
-  if (!(P_Magic(p_ptr) == 0x92f7e3b1))
+  if (!(P_Magic(p_ptr) == 0x92f7e3b1)) {
+    mmc_unlock_page(cache);
     return _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %llu", p_cur, p_offset);
+  }
 
   /* Copy to cache structure */
   cache->p_num_slots = P_NumSlots(p_ptr);
@@ -270,13 +277,17 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
 
   /* Reality check */
   if (cache->p_num_slots < 89 || cache->p_num_slots > cache->c_page_size)
-    return _mmc_set_error(cache, 0, "cache num_slots mistmatch");
-  if (cache->p_free_slots < 0 || cache->p_free_slots > cache->p_num_slots)
-    return _mmc_set_error(cache, 0, "cache free slots mustmatch");
-  if (cache->p_old_slots > cache->p_free_slots)
-    return _mmc_set_error(cache, 0, "cache old slots mistmatch");
-  if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size)
-    return _mmc_set_error(cache, 0, "cache free data mistmatch");
+    res = _mmc_set_error(cache, 0, "cache num_slots mistmatch");
+  else if (cache->p_free_slots < 0 || cache->p_free_slots > cache->p_num_slots)
+    res = _mmc_set_error(cache, 0, "cache free slots mustmatch");
+  else if (cache->p_old_slots > cache->p_free_slots)
+    res = _mmc_set_error(cache, 0, "cache old slots mistmatch");
+  else if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size)
+    res = _mmc_set_error(cache, 0, "cache free data mistmatch");
+  if (res) {
+    mmc_unlock_page(cache);
+    return res;
+  }
 
   /* Check page header */
   ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
@@ -1081,36 +1092,29 @@ MU32 * _mmc_find_slot(
 /*
  * void _mmc_init_page(mmap_cache * cache, int page)
  *
- * Initialise the given page as empty
- *
- * If page == -1, init all pages
+ * Initialise the given page as empty. It's expected
+ *  that you've already locked the page before doing
+ *  this
  *
 */
 void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
-  MU32 start_page = p_cur, end_page = p_cur+1;
-  if (p_cur == NOPAGE) {
-    start_page = 0;
-    end_page = cache->c_num_pages;
-  }
+  /* Setup page details */
+  MU64 p_offset = (MU64)p_cur * cache->c_page_size;
+  void * p_ptr = PTR_ADD(cache->mm_var, p_offset);
 
-  for (p_cur = start_page; p_cur < end_page; p_cur++) {
-    /* Setup page details */
-    MU64 p_offset = (MU64)p_cur * cache->c_page_size;
-    void * p_ptr = PTR_ADD(cache->mm_var, p_offset);
+  /* Initialise to all 0's */
+  memset(p_ptr, 0, cache->c_page_size);
 
-    /* Initialise to all 0's */
-    memset(p_ptr, 0, cache->c_page_size);
+  /* Setup header */
+  P_Magic(p_ptr) = 0x92f7e3b1;
+  P_NumSlots(p_ptr) = cache->start_slots;
+  P_FreeSlots(p_ptr) = cache->start_slots;
+  P_OldSlots(p_ptr) = 0;
+  P_FreeData(p_ptr) = P_HEADERSIZE + cache->start_slots * 4;
+  P_FreeBytes(p_ptr) = cache->c_page_size - P_FreeData(p_ptr);
+  P_NReads(p_ptr) = 0;
+  P_NReadHits(p_ptr) = 0;
 
-    /* Setup header */
-    P_Magic(p_ptr) = 0x92f7e3b1;
-    P_NumSlots(p_ptr) = cache->start_slots;
-    P_FreeSlots(p_ptr) = cache->start_slots;
-    P_OldSlots(p_ptr) = 0;
-    P_FreeData(p_ptr) = P_HEADERSIZE + cache->start_slots * 4;
-    P_FreeBytes(p_ptr) = cache->c_page_size - P_FreeData(p_ptr);
-    P_NReads(p_ptr) = 0;
-    P_NReadHits(p_ptr) = 0;
-  }
 }
 
 /*
