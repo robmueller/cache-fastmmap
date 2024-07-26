@@ -50,7 +50,6 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
   }
 
   /* Create file if it doesn't exist */
-  *do_init = 0;
   res = stat(cache->share_file, &statbuf);
   if (res == -1) {
     mode_t permissions = (mode_t)cache->permissions;
@@ -207,9 +206,6 @@ int mmc_unlock_page(mmap_cache * cache) {
 
   /* And unlock page */
   fcntl(cache->fh, F_SETLKW, &lock);
-
-  /* Set to bad value while page not locked */
-  cache->p_cur = NOPAGE;
 
   return 0;
 }

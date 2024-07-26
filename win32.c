@@ -51,8 +51,6 @@ int mmc_open_cache_file(mmap_cache* cache, int* do_init) {
     HANDLE fh, fileMap, findHandle;
     WIN32_FIND_DATA statbuf;
 
-    *do_init = 0;
-        
     findHandle = FindFirstFile(cache->share_file, &statbuf);
         
     /* Create file if it doesn't exist */    
@@ -192,9 +190,6 @@ int mmc_unlock_page(mmap_cache* cache) {
     lock.hEvent = 0;
   
     UnlockFileEx(cache->fh, 0, cache->c_page_size, 0, &lock);
-    
-    /* Set to bad value while page not locked */
-    cache->p_cur = NOPAGE;
 }
 
 /*

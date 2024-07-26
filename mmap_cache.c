@@ -113,7 +113,7 @@ int mmc_get_param(mmap_cache * cache, char * param) {
  * 
 */
 int mmc_init(mmap_cache * cache) {
-  int i, do_init;
+  int i, do_init = cache->init_file;
   MU32 c_num_pages, c_page_size;
   MU64 c_size;
 
@@ -339,6 +339,8 @@ int mmc_unlock(mmap_cache * cache) {
   ASSERT(_mmc_test_page(cache));
 
   mmc_unlock_page(cache);
+
+  cache->p_cur = NOPAGE;
 
   return 0;
 }
