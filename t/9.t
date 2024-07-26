@@ -12,7 +12,7 @@ use strict;
 # its man page ( perldoc Test::More ) for help writing this test script.
 
 my $FC = Cache::FastMmap->new(
-  page_size => 8192,
+  page_size => 16384,
   num_pages => 3,
   init_file => 1,
   serializer => ''
@@ -50,7 +50,7 @@ foreach my $i (1 .. 500) {
 ok( !$Bad );
 
 $FC = Cache::FastMmap->new(
-  page_size => 8192,
+  page_size => 16384,
   num_pages => 3,
   init_file => 1
 );

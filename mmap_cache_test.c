@@ -36,7 +36,7 @@ double drand48(void) {
 void * Get(mmap_cache * cache, void * key_ptr, int key_len, int * val_len) {
   int found;
   void * val_ptr, * val_rtn_ptr = 0;
-  MU32 hash_page, hash_slot, flags;
+  MU64 hash_page, hash_slot, flags;
 
   /* Hash key to get page and slot */
   mmc_hash(cache, key_ptr, key_len, &hash_page, &hash_slot);
@@ -63,7 +63,7 @@ void * Get(mmap_cache * cache, void * key_ptr, int key_len, int * val_len) {
 }
 
 void Set(mmap_cache * cache, void * key_ptr, int key_len, void * val_ptr, int val_len) {
-  MU32 hash_page, hash_slot, flags = 0, new_num_slots, ** expunge_items = 0;
+  MU64 hash_page, hash_slot, flags = 0, new_num_slots, ** expunge_items = 0;
   int num_expunge;
 
   /* Hash key to get page and slot */
@@ -280,10 +280,10 @@ int RepeatMixTests(mmap_cache * cache, double ratio, key_list * kl) {
 }
 
 void IteratorTests(mmap_cache * cache) {
-  MU32 * entry_ptr;
+  MU64 * entry_ptr;
   void * key_ptr, * val_ptr;
   int key_len, val_len;
-  MU32 last_access, expire_time, flags;
+  MU64 last_access, expire_time, flags;
   mmap_cache_it * it = mmc_iterate_new(cache);
 
   printf("Iterator tests\n");

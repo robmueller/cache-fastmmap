@@ -16,32 +16,32 @@
 struct mmap_cache {
 
   /* Current page details */
-  void * p_base;
-  MU32 * p_base_slots;
-  MU32    p_cur;
+  void *  p_base;
+  MU64 *  p_base_slots;
+  MU64    p_cur;
   MU64    p_offset;
 
-  MU32    p_num_slots;
-  MU32    p_free_slots;
-  MU32    p_old_slots;
-  MU32    p_free_data;
-  MU32    p_free_bytes;
-  MU32    p_n_reads;
-  MU32    p_n_read_hits;
+  MU64    p_num_slots;
+  MU64    p_free_slots;
+  MU64    p_old_slots;
+  MU64    p_free_data;
+  MU64    p_free_bytes;
+  MU64    p_n_reads;
+  MU64    p_n_read_hits;
 
   int    p_changed;
 
   /* General page details */
-  MU32    c_num_pages;
-  MU32    c_page_size;
+  MU64    c_num_pages;
+  MU64    c_page_size;
   MU64    c_size;
 
   /* Pointer to mmapped area */
   void * mm_var;
 
   /* Cache general details */
-  MU32    start_slots;
-  MU32    expire_time;
+  MU64    start_slots;
+  MU64    expire_time;
   int     catch_deadlocks;
   int     enable_stats;
 
@@ -65,33 +65,35 @@ struct mmap_cache {
 
 struct mmap_cache_it {
   mmap_cache * cache;
-  MU32         p_cur;
-  MU32 *       slot_ptr;
-  MU32 *       slot_ptr_end;
+  MU64         p_cur;
+  MU64 *       slot_ptr;
+  MU64 *       slot_ptr_end;
 };
 
+#define PAGE_MAGIC 0xdbbde13491ede50e
+
 /* Macros to access page entries */
-#define PP(p) ((MU32 *)p)
+#define PP(p) ((MU64 *)p)
 
-#define P_Magic(p) (*(PP(p)+0))
-#define P_NumSlots(p) (*(PP(p)+1))
-#define P_FreeSlots(p) (*(PP(p)+2))
-#define P_OldSlots(p) (*(PP(p)+3))
-#define P_FreeData(p) (*(PP(p)+4))
-#define P_FreeBytes(p) (*(PP(p)+5))
-#define P_NReads(p) (*(PP(p)+6))
-#define P_NReadHits(p) (*(PP(p)+7))
+#define P_Magic(p)      (*(PP(p)+0))
+#define P_NumSlots(p)   (*(PP(p)+1))
+#define P_FreeSlots(p)  (*(PP(p)+2))
+#define P_OldSlots(p)   (*(PP(p)+3))
+#define P_FreeData(p)   (*(PP(p)+4))
+#define P_FreeBytes(p)  (*(PP(p)+5))
+#define P_NReads(p)     (*(PP(p)+6))
+#define P_NReadHits(p)  (*(PP(p)+7))
 
-#define P_HEADERSIZE 32
+#define P_HEADERSIZE (sizeof(MU64)*8)
 
 /* Macros to access cache slot entries */
-#define SP(s) ((MU32 *)s)
+#define SP(s) ((MU64 *)s)
 
 /* Offset pointer 'p' by 'o' bytes */
 #define PTR_ADD(p,o) ((void *)((char *)p + o))
 
 /* Given a data pointer, get key len, value len or combined len */
-#define S_Ptr(b,s)      ((MU32 *)PTR_ADD(b, s))
+#define S_Ptr(b,s)      ((MU64 *)PTR_ADD(b, s))
 
 #define S_LastAccess(s) (*(s+0))
 #define S_ExpireOn(s)   (*(s+1))
@@ -99,24 +101,25 @@ struct mmap_cache_it {
 #define S_Flags(s)      (*(s+3))
 #define S_KeyLen(s)     (*(s+4))
 #define S_ValLen(s)     (*(s+5))
+#define SLOT_HEADER_COUNT 6
 
-#define S_KeyPtr(s)     ((void *)(s+6))
-#define S_ValPtr(s)     (PTR_ADD((void *)(s+6), S_KeyLen(s)))
+#define S_KeyPtr(s)     ((void *)(s+SLOT_HEADER_COUNT))
+#define S_ValPtr(s)     (PTR_ADD((void *)(s+SLOT_HEADER_COUNT), S_KeyLen(s)))
 
 /* Length of slot data including key and value data */
-#define S_SlotLen(s)    (sizeof(MU32)*6 + S_KeyLen(s) + S_ValLen(s))
-#define KV_SlotLen(k,v) (sizeof(MU32)*6 + k + v)
-/* Found key/val len to nearest 4 bytes */
-#define ROUNDLEN(l)     ((l) += 3 - (((l)-1) & 3))  
+#define S_SlotLen(s)    (sizeof(MU64)*SLOT_HEADER_COUNT + S_KeyLen(s) + S_ValLen(s))
+#define KV_SlotLen(k,v) (sizeof(MU64)*SLOT_HEADER_COUNT + k + v)
+/* Found key/val len to nearest 8 bytes */
+#define ROUNDLEN(l)     ((l) += 7 - (((l)-1) & 7))  
 
 /* Externs from mmap_cache.c */ 
 extern char * def_share_file;
-extern MU32    def_init_file;
-extern MU32    def_test_file;
-extern MU32    def_expire_time;
-extern MU32    def_c_num_pages;
-extern MU32    def_c_page_size;
-extern MU32    def_start_slots;
+extern int     def_init_file;
+extern int     def_test_file;
+extern MU64    def_expire_time;
+extern MU64    def_c_num_pages;
+extern MU64    def_c_page_size;
+extern MU64    def_start_slots;
 extern char* _mmc_get_def_share_filename(mmap_cache * cache);
 
 /* Platform specific functions defined in unix.c | win32.c */

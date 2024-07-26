@@ -87,53 +87,53 @@
  * 
  * The layout of each page is:
  * 
- * - Magic (4 bytes) - 0x92f7e3b1 magic page start marker
+ * - Magic (8 bytes) - 0x92f7e3b17d937a12 magic page start marker
  *
- * - NumSlots (4 bytes) - Number of hash slots in this page
+ * - NumSlots (8 bytes) - Number of hash slots in this page
  *
- * - FreeSlots (4 bytes) - Number of free slots left in this page.
+ * - FreeSlots (8 bytes) - Number of free slots left in this page.
  *   This includes all slots with a last access time of 0
  *   (empty and don't search past) or 1 (empty, but keep searching
  *   because deleted slot)
  * 
- * - OldSlots (4 bytes) - Of all the free slots, how many were in use
+ * - OldSlots (8 bytes) - Of all the free slots, how many were in use
  *   and are now deleted. This is slots with a last access time of 1
  * 
- * - FreeData (4 bytes) - Offset to free data area to place next item
+ * - FreeData (8 bytes) - Offset to free data area to place next item
  * 
- * - FreeBytes (4 bytes) - Bytes left in free data area
+ * - FreeBytes (8 bytes) - Bytes left in free data area
  * 
- * - N Reads (4 bytes) - Number of reads performed on this page
+ * - N Reads (8 bytes) - Number of reads performed on this page
  *
- * - N Read Hits (4 bytes) - Number of reads on this page that have hit
+ * - N Read Hits (8 bytes) - Number of reads on this page that have hit
  *   something in the cache
  * 
- * - Slots (4 bytes * NumSlots) - Hash slots
+ * - Slots (8 bytes * NumSlots) - Hash slots
  *
  * - Data (to end of page) - Key/value data
  * 
  * Each slot is made of:
  * 
- * - Offset (4 bytes) - offset from start of page to actual data. This
+ * - Offset (8 bytes) - offset from start of page to actual data. This
  *   is 0 if slot is empty, 1 if was used but now empty. This is needed
  *   so deletes don't require a complete rehash with the linear
  *   searching method we use
  *
  * Each data item is made of:
  *
- * - LastAccess (4 bytes) - Unix time data was last accessed
+ * - LastAccess (8 bytes) - Unix time data was last accessed
  * 
- * - ExpireTime (4 bytes) - Unix time data should expire. This is 0 if it
+ * - ExpireTime (8 bytes) - Unix time data should expire. This is 0 if it
  *   should never expire
  * 
- * - HashValue (4 bytes) - Value key was hashed to, so we don't have to
+ * - HashValue (8 bytes) - Value key was hashed to, so we don't have to
  *   rehash on a re-organisation of the hash table
  *
- * - Flags (4 bytes) - Various flags
+ * - Flags (8 bytes) - Various flags
  * 
- * - KeyLen (4 bytes) - Length of key
+ * - KeyLen (8 bytes) - Length of key
  * 
- * - ValueLen (4 bytes) - Length of value
+ * - ValueLen (8 bytes) - Length of value
  * 
  * - Key (KeyLen bytes) - Key data
  * 
@@ -187,50 +187,50 @@ typedef uint32_t MU32;
 typedef uint64_t MU64;
 
 /* Magic value for no p_cur */
-#define NOPAGE (~(MU32)0)
+#define NOPAGE (~(MU64)0)
 
 /* Allow overriding "time" for tests */
-void mmc_set_time_override(MU32);
+void mmc_set_time_override(MU64);
 
 /* Initialisation/closing/error functions */
 mmap_cache * mmc_new();
 int mmc_init(mmap_cache *);
 int mmc_set_param(mmap_cache *, char *, char *);
-int mmc_get_param(mmap_cache *, char *);
+long mmc_get_param(mmap_cache *, char *);
 int mmc_close(mmap_cache *);
 char * mmc_error(mmap_cache *);
 
 /* Functions for find/locking a page */
-int mmc_hash(mmap_cache *, void *, int, MU32 *, MU32 *);
-int mmc_lock(mmap_cache *, MU32);
+int mmc_hash(mmap_cache *, void *, int, MU64 *, MU64 *);
+int mmc_lock(mmap_cache *, MU64);
 int mmc_unlock(mmap_cache *);
 int mmc_is_locked(mmap_cache *);
 
 /* Functions for getting/setting/deleting values in current page */
-int mmc_read(mmap_cache *, MU32, void *, int, void **, int *, MU32 *, MU32 *);
-int mmc_write(mmap_cache *, MU32, void *, int, void *, int, MU32, MU32);
-int mmc_delete(mmap_cache *, MU32, void *, int, MU32 *);
+int mmc_read(mmap_cache *, MU64, void *, int, void **, int *, MU64 *, MU64 *);
+int mmc_write(mmap_cache *, MU64, void *, int, void *, int, MU64, MU64);
+int mmc_delete(mmap_cache *, MU64, void *, int, MU64 *);
 
 /* Functions of expunging values in current page */
-int mmc_calc_expunge(mmap_cache *, int, int, MU32 *, MU32 ***);
-int mmc_do_expunge(mmap_cache *, int, MU32, MU32 **);
+int mmc_calc_expunge(mmap_cache *, int, int, MU64 *, MU64 ***);
+int mmc_do_expunge(mmap_cache *, int, MU64, MU64 **);
 
 /* Functions for iterating over items in a cache */
 mmap_cache_it * mmc_iterate_new(mmap_cache *);
-MU32 * mmc_iterate_next(mmap_cache_it *);
+MU64 * mmc_iterate_next(mmap_cache_it *);
 void mmc_iterate_close(mmap_cache_it *);
 
 /* Retrieve details of a cache page/entry */
-void mmc_get_details(mmap_cache *, MU32 *, void **, int *, void **, int *, MU32 *, MU32 *, MU32 *);
-void mmc_get_page_details(mmap_cache * cache, MU32 * nreads, MU32 * nreadhits);
+void mmc_get_details(mmap_cache *, MU64 *, void **, int *, void **, int *, MU64 *, MU64 *, MU64 *);
+void mmc_get_page_details(mmap_cache * cache, MU64 * nreads, MU64 * nreadhits);
 void mmc_reset_page_details(mmap_cache * cache);
 
 /* Internal functions */
 int _mmc_set_error(mmap_cache *, int, char *, ...);
-void _mmc_init_page(mmap_cache *, MU32);
+void _mmc_init_page(mmap_cache *, MU64);
 
-MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int, int );
-void _mmc_delete_slot(mmap_cache * , MU32 *);
+MU64 * _mmc_find_slot(mmap_cache * , MU64 , void *, int, int );
+void _mmc_delete_slot(mmap_cache * , MU64 *);
 
 int _mmc_check_expunge(mmap_cache * , int);
 

@@ -32,6 +32,7 @@ my ($R, $DidStore) =  $FC->get_and_set('', sub { 'abcd' });
 is ($R, "abcd", "get_and_set('', sub { 'abcd' })" );
 is ($DidStore, 1, "get_and_set did store");
 ok( $FC->exists(''),              "true exists('')");
+is( $FC->get(''), 'abcd',         "get('') eq 'abcd'");
 
 ok( $FC->set(' ', 'def'),         "set(' ', 'def')" );
 is( $FC->get(' '), 'def',         "get(' ') eq 'def'");

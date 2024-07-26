@@ -32,7 +32,7 @@ is( $FC->get_and_set("cnt", sub { return ++$_[1]; }), 3, "get_and_set 2" );
 
 # Basic atomicness test
 
-my $loops = 5000;
+my $loops = 50000;
 if (!$IsWin) {
 
 $FC->set("cnt", 0);
@@ -41,7 +41,7 @@ if (my $pid = fork()) {
     $FC->get_and_set("cnt", sub { return ++$_[1]; });
   }
   waitpid($pid, 0);
-  is( $FC->get("cnt"), $loops*2, "get_and_set 1");
+  is( $FC->get("cnt"), $loops*2, "get_and_set in multiple processes");
 
 } else {
   for (1 .. $loops) {
@@ -65,7 +65,7 @@ if (my $pid = fork()) {
     $got_but_didnt_remove++ if $got && !$did_remove;
   }
   waitpid($pid, 0);
-  is( $got_but_didnt_remove, 0, "get_and_remove 1" );
+  is( $got_but_didnt_remove, 0, "get_and_remove in multiple processes" );
 } else {
   for (1..$loops) {
     $FC->remove("cnt");

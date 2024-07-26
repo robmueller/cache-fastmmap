@@ -25,7 +25,7 @@ my $FC = Cache::FastMmap->new(
   serializer => '',
   init_file => 1,
   num_pages => 89,
-  page_size => 1024,
+  page_size => 2048,
   context => \%BackingStore,
   read_cb => sub { $RCBCalled++; return $_[0]->{$_[1]}; },
   write_cb => sub { $_[0]->{$_[1]} = $_[2]; },

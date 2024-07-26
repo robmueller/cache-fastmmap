@@ -23,20 +23,20 @@
 #include "mmap_cache_internals.h"
 
 /* Global time_override */
-MU32 time_override = 0;
+MU64 time_override = 0;
 
-void mmc_set_time_override(MU32 set_time) {
+void mmc_set_time_override(MU64 set_time) {
   time_override = set_time;
 }
 
 /* Default values for a new cache */
 char * def_share_file = "/tmp/sharefile";
-MU32    def_init_file = 0;
-MU32    def_test_file = 0;
-MU32    def_expire_time = 0;
-MU32    def_c_num_pages = 89;
-MU32    def_c_page_size = 65536;
-MU32    def_start_slots = 89;
+int     def_init_file = 0;
+int     def_test_file = 0;
+MU64    def_expire_time = 0;
+MU64    def_c_num_pages = 89;
+MU64    def_c_page_size = 65536;
+MU64    def_start_slots = 89;
 
 /*
  * mmap_cache * mmc_new()
@@ -71,17 +71,17 @@ int mmc_set_param(mmap_cache * cache, char * param, char * val) {
   } else if (!strcmp(param, "test_file")) {
     cache->test_file = atoi(val);
   } else if (!strcmp(param, "page_size")) {
-    cache->c_page_size = atoi(val);
+    cache->c_page_size = atol(val);
   } else if (!strcmp(param, "num_pages")) {
-    cache->c_num_pages = atoi(val);
+    cache->c_num_pages = atol(val);
   } else if (!strcmp(param, "expire_time")) {
-    cache->expire_time = atoi(val);
+    cache->expire_time = atol(val);
   } else if (!strcmp(param, "share_file")) {
     cache->share_file = val;
   } else if (!strcmp(param, "permissions")) {
     cache->permissions = atoi(val);
   } else if (!strcmp(param, "start_slots")) {
-    cache->start_slots = atoi(val);
+    cache->start_slots = atol(val);
   } else if (!strcmp(param, "catch_deadlocks")) {
     cache->catch_deadlocks = atoi(val);
   } else if (!strcmp(param, "enable_stats")) {
@@ -93,13 +93,13 @@ int mmc_set_param(mmap_cache * cache, char * param, char * val) {
   return 0;
 }
 
-int mmc_get_param(mmap_cache * cache, char * param) {
+long mmc_get_param(mmap_cache * cache, char * param) {
   if (!strcmp(param, "page_size")) {
-    return (int)cache->c_page_size;
+    return (long)cache->c_page_size;
   } else if (!strcmp(param, "num_pages")) {
-    return (int)cache->c_num_pages;
+    return (long)cache->c_num_pages;
   } else if (!strcmp(param, "expire_time")) {
-    return (int)cache->expire_time;
+    return (long)cache->expire_time;
   } else {
     return _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
   }
@@ -114,7 +114,7 @@ int mmc_get_param(mmap_cache * cache, char * param) {
 */
 int mmc_init(mmap_cache * cache) {
   int i, do_init = cache->init_file;
-  MU32 c_num_pages, c_page_size;
+  MU64 c_num_pages, c_page_size;
   MU64 c_size;
 
   /* Need a share file */
@@ -234,14 +234,14 @@ char * mmc_error(mmap_cache * cache) {
 
 /*
  * mmc_lock(
- *   cache_mmap * cache, MU32 p_cur
+ *   cache_mmap * cache, MU64 p_cur
  * )
  *
  * Lock the given page number using fcntl locking. Setup
  * cache->p_* fields with correct values for the given page
  *
 */
-int mmc_lock(mmap_cache * cache, MU32 p_cur) {
+int mmc_lock(mmap_cache * cache, MU64 p_cur) {
   MU64 p_offset;
   void * p_ptr;
   int res = 0;
@@ -261,7 +261,7 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   res = mmc_lock_page(cache, p_offset);
   if (res) return res;
 
-  if (!(P_Magic(p_ptr) == 0x92f7e3b1)) {
+  if (!(P_Magic(p_ptr) == PAGE_MAGIC)) {
     mmc_unlock_page(cache);
     return _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %llu", p_cur, p_offset);
   }
@@ -290,7 +290,7 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   }
 
   /* Check page header */
-  ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
+  ASSERT(P_Magic(p_ptr) == PAGE_MAGIC);
   ASSERT(P_NumSlots(p_ptr) >= 89 && P_NumSlots(p_ptr) < cache->c_page_size);
   ASSERT(P_FreeSlots(p_ptr) >= 0 && P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
   ASSERT(P_OldSlots(p_ptr) <= P_FreeSlots(p_ptr));
@@ -333,6 +333,16 @@ int mmc_unlock(mmap_cache * cache) {
     P_NReadHits(p_ptr) = cache->p_n_read_hits;
 
     cache->p_changed = 0;
+  } else {
+    /* Sanity check we didn't actually change anything */
+    void * p_ptr = cache->p_base;
+    ASSERT(P_NumSlots(p_ptr) == cache->p_num_slots);
+    ASSERT(P_FreeSlots(p_ptr) == cache->p_free_slots);
+    ASSERT(P_OldSlots(p_ptr) == cache->p_old_slots);
+    ASSERT(P_FreeData(p_ptr) == cache->p_free_data);
+    ASSERT(P_FreeBytes(p_ptr) == cache->p_free_bytes);
+    ASSERT(P_NReads(p_ptr) == cache->p_n_reads);
+    ASSERT(P_NReadHits(p_ptr) == cache->p_n_read_hits);
   }
 
   /* Test before unlocking */
@@ -362,7 +372,7 @@ int mmc_is_locked(mmap_cache * cache) {
  * int mmc_hash(
  *   cache_mmap * cache,
  *   void *key_ptr, int key_len,
- *   MU32 *hash_page, MU32 *hash_slot
+ *   MU64 *hash_page, MU64 *hash_slot
  * )
  *
  * Hashes the given key, and returns hash value, hash page and hash
@@ -372,40 +382,43 @@ int mmc_is_locked(mmap_cache * cache) {
 int mmc_hash(
   mmap_cache *cache,
   void *key_ptr, int key_len,
-  MU32 *hash_page, MU32 *hash_slot
+  MU64 *hash_page, MU64 *hash_slot
 ) {
-  MU32 h = 0x92f7e3b1;
+  MU64 hp = 0x09fdc4e6;
+  MU64 hs = 0xa8d5b471;
   unsigned char * uc_key_ptr = (unsigned char *)key_ptr;
   unsigned char * uc_key_ptr_end = uc_key_ptr + key_len;
 
   while (uc_key_ptr != uc_key_ptr_end) {
-    h = (h << 4) + (h >> 28) + *uc_key_ptr++;
+    hp = (hp ^ *uc_key_ptr) * (MU64)0x100000001b3UL;
+    hs = (hp ^ *uc_key_ptr) * (MU64)0x100000001b3UL;
+    uc_key_ptr++;
   }
 
-  *hash_page = h % cache->c_num_pages;
-  *hash_slot = h / cache->c_num_pages;
+  *hash_page = hp % cache->c_num_pages;
+  *hash_slot = hs;
 
   return 0;
 }
 
 /*
  * int mmc_read(
- *   cache_mmap * cache, MU32 hash_slot,
+ *   cache_mmap * cache, MU64 hash_slot,
  *   void *key_ptr, int key_len,
  *   void **val_ptr, int *val_len,
- *   MU32 *expire_on, MU32 *flags
+ *   MU64 *expire_on, MU64 *flags
  * )
  *
  * Read key from current page
  *
 */
 int mmc_read(
-  mmap_cache *cache, MU32 hash_slot,
+  mmap_cache *cache, MU64 hash_slot,
   void *key_ptr, int key_len,
   void **val_ptr, int *val_len,
-  MU32 *expire_on_p, MU32 *flags_p
+  MU64 *expire_on_p, MU64 *flags_p
 ) {
-  MU32 * slot_ptr;
+  MU64 * slot_ptr;
 
   /* Increase read count for page */
   if (cache->enable_stats) {
@@ -425,10 +438,10 @@ int mmc_read(
   /* We found it! Check some other things... */
   } else {
 
-    MU32 * base_det = S_Ptr(cache->p_base, *slot_ptr);
-    MU32 now = time_override ? time_override : (MU32)time(0);
+    MU64 * base_det = S_Ptr(cache->p_base, *slot_ptr);
+    MU64 now = time_override ? time_override : (MU64)time(0);
 
-    MU32 expire_on = S_ExpireOn(base_det);
+    MU64 expire_on = S_ExpireOn(base_det);
 
     /* Sanity check hash matches */
     ASSERT(S_SlotHash(base_det) == hash_slot);
@@ -462,26 +475,26 @@ int mmc_read(
 
 /*
  * int mmc_write(
- *   cache_mmap * cache, MU32 hash_slot,
+ *   cache_mmap * cache, MU64 hash_slot,
  *   void *key_ptr, int key_len,
  *   void *val_ptr, int val_len,
- *   MU32 expire_on, MU32 flags
+ *   MU64 expire_on, MU64 flags
  * )
  *
  * Write key to current page
  *
 */
 int mmc_write(
-  mmap_cache *cache, MU32 hash_slot,
+  mmap_cache *cache, MU64 hash_slot,
   void *key_ptr, int key_len,
   void *val_ptr, int val_len,
-  MU32 expire_on, MU32 flags
+  MU64 expire_on, MU64 flags
 ) {
   int did_store = 0;
-  MU32 kvlen = KV_SlotLen(key_len, val_len);
+  MU64 kvlen = KV_SlotLen(key_len, val_len);
 
   /* Search for slot with given key */
-  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 1);
+  MU64 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 1);
 
   /* If all slots full, definitely can't store */
   if (!slot_ptr)
@@ -501,11 +514,11 @@ int mmc_write(
 
   /* If there's space, store the key/value in the data section */
   if (cache->p_free_bytes >= kvlen) {
-    MU32 * base_det = PTR_ADD(cache->p_base, cache->p_free_data);
-    MU32 now = time_override ? time_override : (MU32)time(0);
+    MU64 * base_det = PTR_ADD(cache->p_base, cache->p_free_data);
+    MU64 now = time_override ? time_override : (MU64)time(0);
 
     /* Calculate expiry time */
-    if (expire_on == (MU32)-1)
+    if (expire_on == (MU64)-1)
       expire_on = cache->expire_time ? now + cache->expire_time : 0;
 
     /* Store info into slot */
@@ -513,8 +526,8 @@ int mmc_write(
     S_ExpireOn(base_det) = expire_on;
     S_SlotHash(base_det) = hash_slot;
     S_Flags(base_det) = flags;
-    S_KeyLen(base_det) = (MU32)key_len;
-    S_ValLen(base_det) = (MU32)val_len;
+    S_KeyLen(base_det) = (MU64)key_len;
+    S_ValLen(base_det) = (MU64)val_len;
 
     /* Copy key/value to data section */
     memcpy(S_KeyPtr(base_det), key_ptr, key_len);
@@ -542,7 +555,7 @@ int mmc_write(
 
 /*
  * int mmc_delete(
- *   cache_mmap * cache, MU32 hash_slot,
+ *   cache_mmap * cache, MU64 hash_slot,
  *   void *key_ptr, int key_len
  * )
  *
@@ -550,12 +563,12 @@ int mmc_write(
  *
 */
 int mmc_delete(
-  mmap_cache *cache, MU32 hash_slot,
+  mmap_cache *cache, MU64 hash_slot,
   void *key_ptr, int key_len,
-  MU32 * flags
+  MU64 * flags
 ) {
   /* Search slots for key */
-  MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 2);
+  MU64 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 2);
 
   /* Did we find a value? */
   if (!slot_ptr || *slot_ptr == 0) {
@@ -567,7 +580,7 @@ int mmc_delete(
   } else {
 
     /* Store flags in output pointer */
-    MU32 * base_det = S_Ptr(cache->p_base, *slot_ptr);
+    MU64 * base_det = S_Ptr(cache->p_base, *slot_ptr);
     *flags = S_Flags(base_det);
 
     _mmc_delete_slot(cache, slot_ptr);
@@ -577,8 +590,8 @@ int mmc_delete(
 }
 
 int last_access_cmp(const void * a, const void * b) {
-  MU32 av = S_LastAccess(*(MU32 **)a);
-  MU32 bv = S_LastAccess(*(MU32 **)b);
+  MU64 av = S_LastAccess(*(MU64 **)a);
+  MU64 bv = S_LastAccess(*(MU64 **)b);
   if (av < bv) return -1;
   if (av > bv) return 1;
   return 0;
@@ -586,7 +599,7 @@ int last_access_cmp(const void * a, const void * b) {
 
 /*
  * int mmc_calc_expunge(
- *   cache_mmap * cache, int mode, int len, MU32 * new_num_slots, MU32 *** to_expunge
+ *   cache_mmap * cache, int mode, int len, MU64 * new_num_slots, MU64 *** to_expunge
  * )
  *
  * Calculate entries to expunge from current page.
@@ -607,7 +620,7 @@ int last_access_cmp(const void * a, const void * b) {
 int mmc_calc_expunge(
   mmap_cache * cache,
   int mode, int len,
-  MU32 * new_num_slots, MU32 *** to_expunge
+  MU64 * new_num_slots, MU64 *** to_expunge
 ) {
   double slots_pct;
 
@@ -616,7 +629,7 @@ int mmc_calc_expunge(
   /* If len >= 0, and space available for len bytes, nothing is expunged */
   if (len >= 0) {
     /* Length of key/value data when stored */
-    MU32 kvlen = KV_SlotLen(len, 0);
+    MU64 kvlen = KV_SlotLen(len, 0);
     ROUNDLEN(kvlen);
 
     slots_pct = (double)(cache->p_free_slots - cache->p_old_slots) / cache->p_num_slots;
@@ -627,27 +640,27 @@ int mmc_calc_expunge(
   }
 
   {
-    MU32 num_slots = cache->p_num_slots;
+    MU64 num_slots = cache->p_num_slots;
 
-    MU32 used_slots = num_slots - cache->p_free_slots;
-    MU32 * slot_ptr = cache->p_base_slots;
-    MU32 * slot_end = slot_ptr + num_slots;
+    MU64 used_slots = num_slots - cache->p_free_slots;
+    MU64 * slot_ptr = cache->p_base_slots;
+    MU64 * slot_end = slot_ptr + num_slots;
 
     /* Store pointers to used slots */
-    MU32 ** copy_base_det = (MU32 **)calloc(used_slots, sizeof(MU32 *));
-    MU32 ** copy_base_det_end = copy_base_det + used_slots;
-    MU32 ** copy_base_det_out = copy_base_det;
-    MU32 ** copy_base_det_in = copy_base_det + used_slots;
+    MU64 ** copy_base_det = (MU64 **)calloc(used_slots, sizeof(MU64 *));
+    MU64 ** copy_base_det_end = copy_base_det + used_slots;
+    MU64 ** copy_base_det_out = copy_base_det;
+    MU64 ** copy_base_det_in = copy_base_det + used_slots;
 
-    MU32 page_data_size = cache->c_page_size - num_slots * 4 - P_HEADERSIZE;
-    MU32 in_slots, data_thresh, used_data = 0;
-    MU32 now = time_override ? time_override : (MU32)time(0);
+    MU64 page_data_size = cache->c_page_size - num_slots * sizeof(MU64) - P_HEADERSIZE;
+    MU64 in_slots, data_thresh, used_data = 0;
+    MU64 now = time_override ? time_override : (MU64)time(0);
 
     /* Loop for each existing slot, and store in a list */
     for (; slot_ptr != slot_end; slot_ptr++) {
-      MU32 data_offset = *slot_ptr;
-      MU32 * base_det = S_Ptr(cache->p_base, data_offset);
-      MU32 expire_on, kvlen;
+      MU64 data_offset = *slot_ptr;
+      MU64 * base_det = S_Ptr(cache->p_base, data_offset);
+      MU64 expire_on, kvlen;
 
       /* Ignore if if free slot */
       if (data_offset <= 1) {
@@ -684,10 +697,10 @@ int mmc_calc_expunge(
 
     /* Increase slot count if free count is low and there's space to increase */
     slots_pct = (double)(copy_base_det_end - copy_base_det_out) / num_slots;
-    if (slots_pct > 0.3 && (page_data_size - used_data > (num_slots + 1) * 4 || mode == 2)) {
+    if (slots_pct > 0.3 && (page_data_size - used_data > (num_slots + 1) * sizeof(MU64) || mode == 2)) {
       num_slots = (num_slots * 2) + 1;
     }
-    page_data_size = cache->c_page_size - num_slots * 4 - P_HEADERSIZE;
+    page_data_size = cache->c_page_size - num_slots * sizeof(MU64) - P_HEADERSIZE;
 
     /* If mode == 0 or 1, we've just worked out ones to keep and
      *  which to dispose of, so return results */
@@ -701,14 +714,14 @@ int mmc_calc_expunge(
 
     /* Sort those potentially in by last access */
     in_slots = copy_base_det_end - copy_base_det_in;
-    qsort((void *)copy_base_det_in, in_slots, sizeof(MU32 *), &last_access_cmp);
+    qsort((void *)copy_base_det_in, in_slots, sizeof(MU64 *), &last_access_cmp);
 
     /* Throw out old slots till we have 40% free data space */
-    data_thresh = (MU32)(0.6 * page_data_size);
+    data_thresh = (MU64)(0.6 * page_data_size);
 
     while (copy_base_det_in != copy_base_det_end && used_data >= data_thresh) {
-      MU32 * slot_ptr = *copy_base_det_in;
-      MU32 kvlen = S_SlotLen(slot_ptr);
+      MU64 * slot_ptr = *copy_base_det_in;
+      MU64 kvlen = S_SlotLen(slot_ptr);
       ROUNDLEN(kvlen);
       ASSERT(kvlen <= page_data_size);
       used_data -= kvlen;
@@ -727,7 +740,7 @@ int mmc_calc_expunge(
 
 /*
  * int mmc_do_expunge(
- *   cache_mmap * cache, int num_expunge, MU32 new_num_slots, MU32 ** to_expunge
+ *   cache_mmap * cache, int num_expunge, MU64 new_num_slots, MU64 ** to_expunge
  * )
  *
  * Expunge given entries from current page.
@@ -735,22 +748,22 @@ int mmc_calc_expunge(
 */
 int mmc_do_expunge(
   mmap_cache * cache,
-  int num_expunge, MU32 new_num_slots, MU32 ** to_expunge
+  int num_expunge, MU64 new_num_slots, MU64 ** to_expunge
 ) {
-  MU32 * base_slots = cache->p_base_slots;
+  MU64 * base_slots = cache->p_base_slots;
 
-  MU32 ** to_keep = to_expunge + num_expunge;
-  MU32 ** to_keep_end = to_expunge + (cache->p_num_slots - cache->p_free_slots);
-  MU32 new_used_slots = (to_keep_end - to_keep);
+  MU64 ** to_keep = to_expunge + num_expunge;
+  MU64 ** to_keep_end = to_expunge + (cache->p_num_slots - cache->p_free_slots);
+  MU64 new_used_slots = (to_keep_end - to_keep);
 
   /* Build new slots data and KV data */
-  MU32 slot_data_size = new_num_slots * 4;
-  MU32 * new_slot_data = (MU32 *)calloc(1, slot_data_size);
+  MU64 slot_data_size = new_num_slots * sizeof(MU64);
+  MU64 * new_slot_data = (MU64 *)calloc(1, slot_data_size);
 
-  MU32 page_data_size = cache->c_page_size - new_num_slots * 4 - P_HEADERSIZE;
+  MU64 page_data_size = cache->c_page_size - new_num_slots * sizeof(MU64) - P_HEADERSIZE;
 
   void * new_kv_data = calloc(1, page_data_size);
-  MU32 new_offset = 0;
+  MU64 new_offset = 0;
 
   /* Sanity check underlying fd is still the same file */
   if (!mmc_check_fh(cache))
@@ -761,17 +774,17 @@ int mmc_do_expunge(
 
   /* Copy entries to keep to new slot entires and data sections */
   for (;to_keep < to_keep_end; to_keep++) {
-    MU32 * old_base_det = *to_keep;
-    MU32 * new_slot_ptr;
-    MU32 kvlen;
+    MU64 * old_base_det = *to_keep;
+    MU64 * new_slot_ptr;
+    MU64 kvlen;
 
     /* Hash key to find starting slot */
-    MU32 slot = S_SlotHash(old_base_det) % new_num_slots;
+    MU64 slot = S_SlotHash(old_base_det) % new_num_slots;
 
 #ifdef DEBUG
     /* Check hash actually matches stored value */
     {
-      MU32 hash_page_dummy, hash_slot;
+      MU64 hash_page_dummy, hash_slot;
       mmc_hash(cache, S_KeyPtr(old_base_det), S_KeyLen(old_base_det), &hash_page_dummy, &hash_slot);
 
       ASSERT(hash_slot == S_SlotHash(old_base_det));
@@ -790,7 +803,7 @@ int mmc_do_expunge(
     memcpy(PTR_ADD(new_kv_data, new_offset), old_base_det, kvlen);
 
     /* Store slot data and mark as used */
-    *new_slot_ptr = new_offset + new_num_slots * 4 + P_HEADERSIZE;
+    *new_slot_ptr = new_offset + new_num_slots * sizeof(MU64) + P_HEADERSIZE;
 
     ROUNDLEN(kvlen);
     new_offset += kvlen;
@@ -809,7 +822,7 @@ int mmc_do_expunge(
   cache->p_num_slots = new_num_slots;
   cache->p_free_slots = new_num_slots - new_used_slots;
   cache->p_old_slots = 0;
-  cache->p_free_data = new_offset + new_num_slots * 4 + P_HEADERSIZE;
+  cache->p_free_data = new_offset + new_num_slots * sizeof(MU64) + P_HEADERSIZE;
   cache->p_free_bytes = page_data_size - new_offset;
 
   /* Make sure changes are saved back to mmap'ed file */
@@ -826,13 +839,13 @@ int mmc_do_expunge(
 }
 
 /*
- * void mmc_get_page_details(mmap_cache * cache, MU32 * n_reads, MU32 * n_read_hits)
+ * void mmc_get_page_details(mmap_cache * cache, MU64 * n_reads, MU64 * n_read_hits)
  *
  * Return details about the current locked page. Currently just
  * number of reads and number of reads that hit
  *
 */
-void mmc_get_page_details(mmap_cache * cache, MU32 * n_reads, MU32 * n_read_hits) {
+void mmc_get_page_details(mmap_cache * cache, MU64 * n_reads, MU64 * n_read_hits) {
   *n_reads = cache->p_n_reads;
   *n_read_hits = cache->p_n_read_hits;
   return;
@@ -867,7 +880,7 @@ mmap_cache_it * mmc_iterate_new(mmap_cache * cache) {
 }
 
 /*
- * MU32 * mmc_iterate_next(mmap_cache_it * it)
+ * MU64 * mmc_iterate_next(mmap_cache_it * it)
  *
  * Move iterator to next item in the cache and return
  * pointer to details (0 if there is no next).
@@ -875,12 +888,12 @@ mmap_cache_it * mmc_iterate_new(mmap_cache * cache) {
  * You can retrieve details with mmc_get_details(...)
  *
 */
-MU32 * mmc_iterate_next(mmap_cache_it * it) {
+MU64 * mmc_iterate_next(mmap_cache_it * it) {
   mmap_cache * cache = it->cache;
-  MU32 * slot_ptr = it->slot_ptr;
-  MU32 * base_det;
-  MU32 expire_on;
-  MU32 now = time_override ? time_override : (MU32)time(0);
+  MU64 * slot_ptr = it->slot_ptr;
+  MU64 * base_det;
+  MU64 expire_on;
+  MU64 now = time_override ? time_override : (MU64)time(0);
 
   /* Go until we find a slot or exit */
   while (1) {
@@ -959,10 +972,10 @@ void mmc_iterate_close(mmap_cache_it * it) {
 /*
  * void mmc_get_details(
  *   mmap_cache * cache,
- *   MU32 * base_det,
+ *   MU64 * base_det,
  *   void ** key_ptr, int * key_len,
  *   void ** val_ptr, int * val_len,
- *   MU32 * last_access, MU32 * expire_on, MU32 * flags
+ *   MU64 * last_access, MU64 * expire_on, MU64 * flags
  * )
  *
  * Given a base_det pointer to entries details
@@ -973,10 +986,10 @@ void mmc_iterate_close(mmap_cache_it * it) {
 */
 void mmc_get_details(
   mmap_cache * cache,
-  MU32 * base_det,
+  MU64 * base_det,
   void ** key_ptr, int * key_len,
   void ** val_ptr, int * val_len,
-  MU32 * last_access, MU32 * expire_on, MU32 * flags
+  MU64 * last_access, MU64 * expire_on, MU64 * flags
 ) {
   cache = cache;
 
@@ -994,14 +1007,14 @@ void mmc_get_details(
 
 /*
  * _mmc_delete_slot(
- *   mmap_cache * cache, MU32 * slot_ptr
+ *   mmap_cache * cache, MU64 * slot_ptr
  * )
  *
  * Delete details from the given slot
  *
 */
 void _mmc_delete_slot(
-  mmap_cache * cache, MU32 * slot_ptr
+  mmap_cache * cache, MU64 * slot_ptr
 ) {
   ASSERT(*slot_ptr > 1);
   ASSERT(cache->p_cur != NOPAGE);
@@ -1018,8 +1031,8 @@ void _mmc_delete_slot(
 }
 
 /*
- * MU32 * _mmc_find_slot(
- *   mmap_cache * cache, MU32 hash_slot,
+ * MU64 * _mmc_find_slot(
+ *   mmap_cache * cache, MU64 hash_slot,
  *   void *key_ptr, int key_len,
  *   int mode
  * )
@@ -1028,15 +1041,15 @@ void _mmc_delete_slot(
  * calculate starting slot. Return pointer to slot.
  *
 */
-MU32 * _mmc_find_slot(
-  mmap_cache * cache, MU32 hash_slot,
+MU64 * _mmc_find_slot(
+  mmap_cache * cache, MU64 hash_slot,
   void *key_ptr, int key_len,
   int mode
 ) {
-  MU32 slots_left, * slots_end;
+  MU64 slots_left, * slots_end;
   /* Modulo hash_slot to find starting slot */
-  MU32 * slot_ptr = cache->p_base_slots + (hash_slot % cache->p_num_slots);
-  MU32 * first_deleted = (MU32 *)0;
+  MU64 * slot_ptr = cache->p_base_slots + (hash_slot % cache->p_num_slots);
+  MU64 * first_deleted = (MU64 *)0;
 
   /* Total slots and pointer to end of slot data to do wrapping */
   slots_left = cache->p_num_slots;
@@ -1046,9 +1059,9 @@ MU32 * _mmc_find_slot(
 
   /* Loop with integer probing till we find or don't */
   while (slots_left--) {
-    MU32 data_offset = *slot_ptr;
+    MU64 data_offset = *slot_ptr;
     ASSERT(data_offset == 0 || data_offset == 1 ||
-        ((data_offset >= P_HEADERSIZE + cache->p_num_slots*4) &&
+        ((data_offset >= P_HEADERSIZE + cache->p_num_slots*sizeof(MU64)) &&
          (data_offset < cache->c_page_size) &&
          ((data_offset & 3) == 0)));
 
@@ -1069,13 +1082,13 @@ MU32 * _mmc_find_slot(
 
     } else {
       /* Offset is from start of data area */
-      MU32 * base_det = S_Ptr(cache->p_base, data_offset);
+      MU64 * base_det = S_Ptr(cache->p_base, data_offset);
 
       /* Two longs are key len and data len */
-      MU32 fkey_len = S_KeyLen(base_det);
+      MU64 fkey_len = S_KeyLen(base_det);
 
       /* Key matches? */
-      if (fkey_len == (MU32)key_len && !memcmp(key_ptr, S_KeyPtr(base_det), key_len)) {
+      if (fkey_len == (MU64)key_len && !memcmp(key_ptr, S_KeyPtr(base_det), key_len)) {
 
         /* Yep, found it! */
         return slot_ptr;
@@ -1103,7 +1116,7 @@ MU32 * _mmc_find_slot(
  *  this
  *
 */
-void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
+void _mmc_init_page(mmap_cache * cache, MU64 p_cur) {
   /* Setup page details */
   MU64 p_offset = (MU64)p_cur * cache->c_page_size;
   void * p_ptr = PTR_ADD(cache->mm_var, p_offset);
@@ -1112,11 +1125,11 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
   memset(p_ptr, 0, cache->c_page_size);
 
   /* Setup header */
-  P_Magic(p_ptr) = 0x92f7e3b1;
+  P_Magic(p_ptr) = PAGE_MAGIC;
   P_NumSlots(p_ptr) = cache->start_slots;
   P_FreeSlots(p_ptr) = cache->start_slots;
   P_OldSlots(p_ptr) = 0;
-  P_FreeData(p_ptr) = P_HEADERSIZE + cache->start_slots * 4;
+  P_FreeData(p_ptr) = P_HEADERSIZE + cache->start_slots * sizeof(MU64);
   P_FreeBytes(p_ptr) = cache->c_page_size - P_FreeData(p_ptr);
   P_NReads(p_ptr) = 0;
   P_NReadHits(p_ptr) = 0;
@@ -1130,21 +1143,21 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
  *
 */
 int  _mmc_test_page(mmap_cache * cache) {
-  MU32 * slot_ptr = cache->p_base_slots;
-  MU32 count_free = 0, count_old = 0, max_data_offset = 0;
-  MU32 data_size = cache->c_page_size;
+  MU64 * slot_ptr = cache->p_base_slots;
+  MU64 count_free = 0, count_old = 0, max_data_offset = 0;
+  MU64 data_size = cache->c_page_size;
 
   ASSERT(cache->p_cur != NOPAGE);
   if (cache->p_cur == NOPAGE) return 0;
 
   for (; slot_ptr < cache->p_base_slots + cache->p_num_slots; slot_ptr++) {
-    MU32 data_offset = *slot_ptr;
+    MU64 data_offset = *slot_ptr;
 
     ASSERT(data_offset == 0 || data_offset == 1 ||
-        (data_offset >= P_HEADERSIZE + cache->p_num_slots * 4 &&
+        (data_offset >= P_HEADERSIZE + cache->p_num_slots * sizeof(MU64) &&
          data_offset < cache->c_page_size));
     if (!(data_offset == 0 || data_offset == 1 ||
-        (data_offset >= P_HEADERSIZE + cache->p_num_slots * 4 &&
+        (data_offset >= P_HEADERSIZE + cache->p_num_slots * sizeof(MU64) &&
          data_offset < cache->c_page_size))) return 0;
 
     if (data_offset == 1) {
@@ -1156,13 +1169,13 @@ int  _mmc_test_page(mmap_cache * cache) {
     }
 
     if (data_offset > 1) {
-      MU32 * base_det = S_Ptr(cache->p_base, data_offset);
+      MU64 * base_det = S_Ptr(cache->p_base, data_offset);
 
-      MU32 last_access = S_LastAccess(base_det);
-      MU32 expire_on = S_ExpireOn(base_det);
-      MU32 key_len = S_KeyLen(base_det);
-      MU32 val_len = S_ValLen(base_det);
-      MU32 kvlen = S_SlotLen(base_det);
+      MU64 last_access = S_LastAccess(base_det);
+      MU64 expire_on = S_ExpireOn(base_det);
+      MU64 key_len = S_KeyLen(base_det);
+      MU64 val_len = S_ValLen(base_det);
+      MU64 kvlen = S_SlotLen(base_det);
       ROUNDLEN(kvlen);
 
       ASSERT(last_access > 1000000000);
@@ -1174,8 +1187,8 @@ int  _mmc_test_page(mmap_cache * cache) {
       if (!(key_len >= 0 && key_len < data_size)) return 0;
       ASSERT(val_len >= 0 && val_len < data_size);
       if (!(val_len >= 0 && val_len < data_size)) return 0;
-      ASSERT(kvlen >= 4*4 && kvlen < data_size);
-      if (!(kvlen >= 4*4 && kvlen < data_size)) return 0;
+      ASSERT(kvlen >= sizeof(MU64)*SLOT_HEADER_COUNT && kvlen < data_size);
+      if (!(kvlen >= sizeof(MU64)*SLOT_HEADER_COUNT && kvlen < data_size)) return 0;
 
       /* Keep track of largest end of data position */
       if (data_offset + kvlen > max_data_offset) {
@@ -1184,7 +1197,7 @@ int  _mmc_test_page(mmap_cache * cache) {
 
       /* Check if key lookup finds same thing */
       {
-        MU32 hash_page, hash_slot, * find_slot_ptr;
+        MU64 hash_page, hash_slot, * find_slot_ptr;
 
         /* Hash it */
         mmc_hash(cache, S_KeyPtr(base_det), (int)key_len,
@@ -1219,7 +1232,7 @@ int  _mmc_test_page(mmap_cache * cache) {
  *
 */
 int _mmc_dump_page(mmap_cache * cache) {
-  MU32 slot;
+  MU64 slot;
 
   ASSERT(cache->p_cur != NOPAGE);
 
@@ -1236,14 +1249,14 @@ int _mmc_dump_page(mmap_cache * cache) {
   printf("FreeBytes: %d\n", cache->p_free_bytes);
 
   for (slot = 0; slot < cache->p_num_slots; slot++) {
-    MU32 * slot_ptr = cache->p_base_slots + slot;
+    MU64 * slot_ptr = cache->p_base_slots + slot;
 
     printf("Slot: %d; OF=%d; ", slot, *slot_ptr);
 
     if (*slot_ptr > 1) {
-      MU32 * base_det = S_Ptr(cache->p_base, *slot_ptr);
-      MU32 key_len = S_KeyLen(base_det);
-      MU32 val_len = S_ValLen(base_det);
+      MU64 * base_det = S_Ptr(cache->p_base, *slot_ptr);
+      MU64 key_len = S_KeyLen(base_det);
+      MU64 val_len = S_ValLen(base_det);
       char key[256], val[256];
 
       printf("LA=%d, ET=%d, HS=%d, FL=%d\n",

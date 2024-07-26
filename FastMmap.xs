@@ -95,7 +95,7 @@ fc_hash(obj, key);
   INIT:
     int key_len;
     void * key_ptr;
-    MU32 hash_page, hash_slot;
+    MU64 hash_page, hash_slot;
     STRLEN pl_key_len;
 
     FC_ENTRY
@@ -121,7 +121,7 @@ fc_lock(obj, page);
     FC_ENTRY
 
   CODE:
-    RETVAL = mmc_lock(cache, (MU32)page);
+    RETVAL = mmc_lock(cache, (MU64)page);
   POSTCALL:
     if (RETVAL != 0) {
       croak("%s", mmc_error(cache));
@@ -158,13 +158,13 @@ fc_is_locked(obj)
 void
 fc_read(obj, hash_slot, key)
     SV * obj;
-    U32  hash_slot;
+    unsigned long hash_slot;
     SV * key;
   INIT:
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
-    MU32 expire_on = 0;
-    MU32 flags = 0;
+    MU64 expire_on = 0;
+    MU64 flags = 0;
     STRLEN pl_key_len;
     SV * val;
 
@@ -177,7 +177,7 @@ fc_read(obj, hash_slot, key)
     key_len = (int)pl_key_len;
 
     /* Get value data pointer */
-    found = mmc_read(cache, (MU32)hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags);
+    found = mmc_read(cache, (MU64)hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags);
 
     /* If not found, use undef */
     if (found == -1) {
@@ -211,11 +211,11 @@ fc_read(obj, hash_slot, key)
 int
 fc_write(obj, hash_slot, key, val, expire_on, in_flags)
     SV * obj;
-    U32  hash_slot;
+    unsigned long hash_slot;
     SV * key;
     SV * val;
-    U32 expire_on;
-    U32 in_flags;
+    unsigned long expire_on;
+    unsigned long in_flags;
   INIT:
     int key_len, val_len;
     void * key_ptr, * val_ptr;
@@ -252,7 +252,7 @@ fc_write(obj, hash_slot, key, val, expire_on, in_flags)
     }
 
     /* Write value to cache */
-    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU32)expire_on, (MU32)in_flags);
+    RETVAL = mmc_write(cache, (MU64)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU64)expire_on, (MU64)in_flags);
 
   OUTPUT:
     RETVAL
@@ -260,10 +260,10 @@ fc_write(obj, hash_slot, key, val, expire_on, in_flags)
 int
 fc_delete(obj, hash_slot, key)
     SV * obj;
-    U32  hash_slot;
+    unsigned long hash_slot;
     SV * key;
   INIT:
-    MU32 out_flags;
+    MU64 out_flags;
     int key_len, did_delete;
     void * key_ptr;
     STRLEN pl_key_len;
@@ -277,7 +277,7 @@ fc_delete(obj, hash_slot, key)
     key_len = (int)pl_key_len;
 
     /* Write value to cache */
-    did_delete = mmc_delete(cache, (MU32)hash_slot, key_ptr, key_len, &out_flags);
+    did_delete = mmc_delete(cache, (MU64)hash_slot, key_ptr, key_len, &out_flags);
 
     XPUSHs(sv_2mortal(newSViv((IV)did_delete)));
     XPUSHs(sv_2mortal(newSViv((IV)out_flags)));
@@ -287,7 +287,7 @@ void
 fc_get_page_details(obj)
     SV * obj;
   INIT:
-    MU32 nreads = 0, nreadhits = 0;
+    MU64 nreads = 0, nreadhits = 0;
 
     FC_ENTRY
 
@@ -316,12 +316,12 @@ fc_expunge(obj, mode, wb, len)
     int wb;
     int len;
   INIT:
-    MU32 new_num_slots = 0, ** to_expunge = 0;
+    MU64 new_num_slots = 0, ** to_expunge = 0;
     int num_expunge, item;
 
     void * key_ptr, * val_ptr;
     int key_len, val_len;
-    MU32 last_access, expire_on, flags;
+    MU64 last_access, expire_on, flags;
 
     FC_ENTRY
 
@@ -388,10 +388,10 @@ fc_get_keys(obj, mode)
     int mode;
   INIT:
     mmap_cache_it * it;
-    MU32 * entry_ptr;
+    MU64 * entry_ptr;
     void * key_ptr, * val_ptr;
     int key_len, val_len;
-    MU32 last_access, expire_on, flags;
+    MU64 last_access, expire_on, flags;
 
     FC_ENTRY
 
@@ -461,7 +461,7 @@ fc_get(obj, key)
   INIT:
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
-    MU32 hash_page, hash_slot, expire_on, flags;
+    MU64 hash_page, hash_slot, expire_on, flags;
     STRLEN pl_key_len;
     SV * val;
 
@@ -505,7 +505,7 @@ fc_set(obj, key, val)
   INIT:
     int key_len, val_len;
     void * key_ptr, * val_ptr;
-    MU32 hash_page, hash_slot, flags = 0;
+    MU64 hash_page, hash_slot, flags = 0;
     STRLEN pl_key_len, pl_val_len;
 
     FC_ENTRY
@@ -547,6 +547,6 @@ fc_set_time_override(set_time);
     UV set_time;
 
   CODE:
-    mmc_set_time_override((MU32)set_time);
+    mmc_set_time_override((MU64)set_time);
 
 
