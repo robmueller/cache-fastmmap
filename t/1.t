@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 62;
+use Test::More tests => 63;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -25,6 +25,7 @@ is( $FC->get(''), 'abc',          "get('') eq 'abc'");
 my ($R, $DidStore) =  $FC->get_and_set('', sub { 'abcd' });
 is ($R, "abcd", "get_and_set('', sub { 'abcd' })" );
 is ($DidStore, 1, "get_and_set did store");
+is( $FC->get(''), 'abcd',         "get('') eq 'abcd'");
 
 ok( $FC->set(' ', 'def'),         "set(' ', 'def')" );
 is( $FC->get(' '), 'def',         "get(' ') eq 'def'");

@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 186;
+use Test::More tests => 206;
 BEGIN { use_ok('Cache::FastMmap') };
 use Storable qw(freeze thaw);
 use strict;
@@ -19,14 +19,20 @@ my $FC = Cache::FastMmap->new(
 );
 ok( defined $FC );
 
-ok($FC->set("foo", "a" x 31000), "set foo");
-ok($FC->set("bar", "b" x 31000), "set bar");
+# Store 56000 bytes in cache
+ok($FC->set("foo", "a" x 28000), "set foo");
+ok($FC->set("bar", "b" x 28000), "set bar");
 
-for (1 .. 90) {
+# Store 100 items (> 89 slots), but immediately delete. Each item uses
+#  a slot + about (8*6 + 8) = 56 bytes * 100 slots = 5600 bytes,
+#  make sure 56000 + 5600 < 65536
+for (1 .. 100) {
   ok($FC->set("a", "$_"), "set $_");
   ok($FC->get("a") eq "$_", "get $_");
   $FC->remove("a");
 }
 
-ok($FC->get("foo") eq "a" x 31000, "get foo");
-ok($FC->get("bar") eq "b" x 31000, "get bar");
+# Since each item we added above was immediately deleted, our
+#  original items should still be cached, check that
+ok($FC->get("foo") eq "a" x 28000, "get foo");
+ok($FC->get("bar") eq "b" x 28000, "get bar");
