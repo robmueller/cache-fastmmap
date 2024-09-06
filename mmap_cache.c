@@ -406,7 +406,7 @@ int mmc_hash(
  *   cache_mmap * cache, MU64 hash_slot,
  *   void *key_ptr, int key_len,
  *   void **val_ptr, int *val_len,
- *   MU64 *expire_on, MU64 *flags
+ *   MU64 *expire_on_p, MU64 * version_p, MU64 *flags_p
  * )
  *
  * Read key from current page
@@ -416,7 +416,7 @@ int mmc_read(
   mmap_cache *cache, MU64 hash_slot,
   void *key_ptr, int key_len,
   void **val_ptr, int *val_len,
-  MU64 *expire_on_p, MU64 *flags_p
+  MU64 *expire_on_p, MU64 *version_p, MU64 *flags_p
 ) {
   MU64 * slot_ptr;
 
@@ -458,8 +458,9 @@ int mmc_read(
     S_LastAccess(base_det) = now;
 
     /* Copy values to pointers */
-    *flags_p = S_Flags(base_det);
     *expire_on_p = expire_on;
+    *version_p = S_Version(base_det);
+    *flags_p = S_Flags(base_det);
     *val_len = S_ValLen(base_det);
     *val_ptr = S_ValPtr(base_det);
 
@@ -478,7 +479,7 @@ int mmc_read(
  *   cache_mmap * cache, MU64 hash_slot,
  *   void *key_ptr, int key_len,
  *   void *val_ptr, int val_len,
- *   MU64 expire_on, MU64 flags
+ *   MU64 expire_on, MU64 version, MU64 flags
  * )
  *
  * Write key to current page
@@ -488,7 +489,7 @@ int mmc_write(
   mmap_cache *cache, MU64 hash_slot,
   void *key_ptr, int key_len,
   void *val_ptr, int val_len,
-  MU64 expire_on, MU64 flags
+  MU64 expire_on, MU64 version, MU64 flags
 ) {
   int did_store = 0;
   MU64 kvlen = KV_SlotLen(key_len, val_len);
@@ -525,6 +526,7 @@ int mmc_write(
     S_LastAccess(base_det) = now;
     S_ExpireOn(base_det) = expire_on;
     S_SlotHash(base_det) = hash_slot;
+    S_Version(base_det) = version;
     S_Flags(base_det) = flags;
     S_KeyLen(base_det) = (MU64)key_len;
     S_ValLen(base_det) = (MU64)val_len;
@@ -565,7 +567,7 @@ int mmc_write(
 int mmc_delete(
   mmap_cache *cache, MU64 hash_slot,
   void *key_ptr, int key_len,
-  MU64 * flags
+  MU64 * flags_p, MU64 * version_p
 ) {
   /* Search slots for key */
   MU64 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 2);
@@ -581,7 +583,8 @@ int mmc_delete(
 
     /* Store flags in output pointer */
     MU64 * base_det = S_Ptr(cache->p_base, *slot_ptr);
-    *flags = S_Flags(base_det);
+    *flags_p = S_Flags(base_det);
+    *version_p = S_Version(base_det);
 
     _mmc_delete_slot(cache, slot_ptr);
     return 1;
@@ -989,7 +992,7 @@ void mmc_get_details(
   MU64 * base_det,
   void ** key_ptr, int * key_len,
   void ** val_ptr, int * val_len,
-  MU64 * last_access, MU64 * expire_on, MU64 * flags
+  MU64 * last_access_p, MU64 * expire_on_p, MU64 * version_p, MU64 * flags_p
 ) {
   cache = cache;
 
@@ -999,9 +1002,10 @@ void mmc_get_details(
   *val_ptr = S_ValPtr(base_det);
   *val_len = S_ValLen(base_det);
 
-  *last_access = S_LastAccess(base_det);
-  *expire_on = S_ExpireOn(base_det);
-  *flags = S_Flags(base_det);
+  *last_access_p = S_LastAccess(base_det);
+  *expire_on_p = S_ExpireOn(base_det);
+  *version_p = S_Version(base_det);
+  *flags_p = S_Flags(base_det);
 }
 
 

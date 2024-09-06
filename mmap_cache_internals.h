@@ -98,10 +98,11 @@ struct mmap_cache_it {
 #define S_LastAccess(s) (*(s+0))
 #define S_ExpireOn(s)   (*(s+1))
 #define S_SlotHash(s)   (*(s+2))
-#define S_Flags(s)      (*(s+3))
-#define S_KeyLen(s)     (*(s+4))
-#define S_ValLen(s)     (*(s+5))
-#define SLOT_HEADER_COUNT 6
+#define S_Version(s)    (*(s+3))
+#define S_Flags(s)      (*(s+4))
+#define S_KeyLen(s)     (*(s+5))
+#define S_ValLen(s)     (*(s+6))
+#define SLOT_HEADER_COUNT 7
 
 #define S_KeyPtr(s)     ((void *)(s+SLOT_HEADER_COUNT))
 #define S_ValPtr(s)     (PTR_ADD((void *)(s+SLOT_HEADER_COUNT), S_KeyLen(s)))
