@@ -787,7 +787,7 @@ sub get {
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
   my $Unlock = $Self->_lock_page($HashPage);
-  my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $_[1]);
+  my ($Val, $Flags, $Found, $ExpireOn, $Version) = fc_read($Cache, $HashSlot, $_[1], 0);
 
   # Value not found, check underlying data store
   if (!$Found && (my $read_cb = $Self->{read_cb})) {
@@ -795,7 +795,7 @@ sub get {
     # Callback to read from underlying data store
     # (unlock page first if we allow recursive calls
     $Unlock = undef if $Self->{allow_recursive};
-    $Val = eval { $read_cb->($Self->{context}, $_[1]); };
+    ($Val, my $Opts) = eval { $read_cb->($Self->{context}, $_[1]); };
     my $Err = $@;
     $Unlock = $Self->_lock_page($HashPage) if $Self->{allow_recursive};
 
@@ -805,9 +805,6 @@ sub get {
     # If we found it, or want to cache not-found, store back into our cache
     if (defined $Val || $Self->{cache_not_found}) {
 
-      # Are we doing writeback's? If so, need to mark as dirty in cache
-      my $write_back = $Self->{write_back};
-
       $Val = $Self->{serialize}(\$Val) if $Self->{serialize};
       $Val = $Self->{compress}($Val) if $Self->{compress};
 
@@ -816,7 +813,8 @@ sub get {
       my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
       $Self->_expunge_page(2, 1, $KVLen);
 
-      fc_write($Cache, $HashSlot, $_[1], $Val, -1, 0);
+      my $version = $Opts && defined $Opts->{version} ? int $Opts->{version} : 0;
+      fc_write($Cache, $HashSlot, $_[1], $Val, -1, $version, 0);
     }
   }
 
@@ -830,7 +828,9 @@ sub get {
   $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
 
   # If explicitly asked to skip unlocking, we return the reference to the unlocker
-  return ($Val, $Unlock, { $Found ? (expire_on => $ExpireOn) : () }) if $SkipUnlock;
+  if ($SkipUnlock) {
+    return ($Val, $Unlock, { $Found ? (expire_on => $ExpireOn, version => $Version) : () });
+  }
 
   return $Val;
 }
@@ -870,6 +870,7 @@ sub set {
     defined $Opts->{expire_on} ? $Opts->{expire_on} :
       (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, _time()): -1)
   ) : -1;
+  my $version = defined $Opts->{version} ? int $Opts->{version} : 0;
 
   # Hash value, lock page
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
@@ -893,7 +894,7 @@ sub set {
   $Self->_expunge_page(2, 1, $KVLen);
 
   # Now store into cache
-  my $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_on, $write_back ? FC_ISDIRTY : 0);
+  my $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_on, $version, $write_back ? FC_ISDIRTY : 0);
 
   # Unlock page
   $Unlock = undef;
@@ -905,6 +906,25 @@ sub set {
   }
 
   return $DidStore;
+}
+
+=item I<exists($Key, [ \%Options ])>
+
+Search cache for given Key. Returns undef if not found. Does not
+check any I<read_cb>, only checks for in the actual cache right now
+
+=cut
+sub exists {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  # Hash value, lock page, read result
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
+  my $Unlock = $Self->_lock_page($HashPage);
+  my (undef, $Flags, $Found, $ExpireOn, $Version) = fc_read($Cache, $HashSlot, $_[1], 1);
+
+  $Unlock = undef;
+
+  return $Found ? { expire_on => $ExpireOn, version => $Version } : undef;
 }
 
 =item I<get_and_set($Key, $AtomicSub)>
@@ -1070,7 +1090,7 @@ sub expire {
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
   my $Unlock = $Self->_lock_page($HashPage);
-  my ($Val, $Flags, $Found) = fc_read($Cache, $HashSlot, $_[1]);
+  my ($Val, $Flags, $Found, $Version) = fc_read($Cache, $HashSlot, $_[1], 0);
 
   # If we found it, remove it
   if ($Found) {
@@ -1250,7 +1270,7 @@ sub multi_get {
     # Hash key to get slot in this page and read
     my $FinalKey = "$_[1]-$_";
     (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
-    my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $FinalKey);
+    my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $FinalKey, 0);
     next unless $Found;
 
     # If not using raw values, use thaw() to turn data back into object
@@ -1302,7 +1322,7 @@ sub multi_set {
 
     # Now hash key and store into page
     (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
-    my $DidStore = fc_write($Cache, $HashSlot, $FinalKey, $Val, $expire_on, 0);
+    my $DidStore = fc_write($Cache, $HashSlot, $FinalKey, $Val, $expire_on, 0, 0);
   }
 
   # Unlock page

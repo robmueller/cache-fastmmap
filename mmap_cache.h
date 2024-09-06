@@ -32,7 +32,7 @@
  *  // Lock page
  *  mmc_lock(cache, hash_page);
  *  // Get pointer to value data
- *  mmc_read(cache, hash_slot, (void *)key_ptr, (int)key_len, (void **)&val_ptr, (int *)val_len, &expire_time, &flags);
+ *  mmc_read(cache, hash_slot, (void *)key_ptr, (int)key_len, (void **)&val_ptr, (int *)val_len, &expire_time, &version, &flags);
  *  // Unlock page
  *  mmc_unlock(cache);
  *
@@ -43,7 +43,7 @@
  *  // Lock page
  *  mmc_lock(cache, hash_page);
  *  // Get pointer to value data
- *  mmc_write(cache, hash_slot, (void *)key_ptr, (int)key_len, (void *)val_ptr, (int)val_len, expire_time, flags);
+ *  mmc_write(cache, hash_slot, (void *)key_ptr, (int)key_len, (void *)val_ptr, (int)val_len, expire_time, version, flags);
  *  // Unlock page
  *  mmc_unlock(cache);
  *
@@ -129,6 +129,9 @@
  * - HashValue (8 bytes) - Value key was hashed to, so we don't have to
  *   rehash on a re-organisation of the hash table
  *
+ * - Version (8 bytes) - Opaque version of this object, useful when doing
+ *   a conditional store
+ *
  * - Flags (8 bytes) - Various flags
  * 
  * - KeyLen (8 bytes) - Length of key
@@ -207,9 +210,9 @@ int mmc_unlock(mmap_cache *);
 int mmc_is_locked(mmap_cache *);
 
 /* Functions for getting/setting/deleting values in current page */
-int mmc_read(mmap_cache *, MU64, void *, int, void **, int *, MU64 *, MU64 *);
-int mmc_write(mmap_cache *, MU64, void *, int, void *, int, MU64, MU64);
-int mmc_delete(mmap_cache *, MU64, void *, int, MU64 *);
+int mmc_read(mmap_cache *, MU64, void *, int, void **, int *, MU64 *, MU64 *, MU64 *);
+int mmc_write(mmap_cache *, MU64, void *, int, void *, int, MU64, MU64, MU64);
+int mmc_delete(mmap_cache *, MU64, void *, int, MU64 *, MU64 *);
 
 /* Functions of expunging values in current page */
 int mmc_calc_expunge(mmap_cache *, int, int, MU64 *, MU64 ***);
@@ -221,7 +224,7 @@ MU64 * mmc_iterate_next(mmap_cache_it *);
 void mmc_iterate_close(mmap_cache_it *);
 
 /* Retrieve details of a cache page/entry */
-void mmc_get_details(mmap_cache *, MU64 *, void **, int *, void **, int *, MU64 *, MU64 *, MU64 *);
+void mmc_get_details(mmap_cache *, MU64 *, void **, int *, void **, int *, MU64 *, MU64 *, MU64 *, MU64 *);
 void mmc_get_page_details(mmap_cache * cache, MU64 * nreads, MU64 * nreadhits);
 void mmc_reset_page_details(mmap_cache * cache);
 
