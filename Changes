@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.57 Mon May 5 16:25 2025
+  - Catch a rare bug if someone closes our underlying file
+    handle unexpectedly
+
 1.57 Thu Sep 30 16:25 2021
   - Add expire($key) method to allow explicitly expiring
     a key from the cache. In write-back mode, if the key
