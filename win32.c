@@ -144,6 +144,10 @@ int mmc_map_memory(mmap_cache * cache) {
   return 0;
 }
 
+int mmc_check_fh(mmap_cache* cache) {
+  return 1;
+}
+
 int mmc_close_fh(mmap_cache* cache) {
   int ret = CloseHandle(cache->fh);
   cache->fh = NULL;

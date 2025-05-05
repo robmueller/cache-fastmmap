@@ -50,6 +50,7 @@ struct mmap_cache {
   HANDLE fh;
 #else    
   int    fh;
+  MU64   inode;
 #endif  
   char * share_file;
   int    permissions;
@@ -124,6 +125,7 @@ int mmc_map_memory(mmap_cache* cache);
 int mmc_unmap_memory(mmap_cache* cache);
 int mmc_lock_page(mmap_cache* cache, MU64 p_offset);
 int mmc_unlock_page(mmap_cache * cache);
+int mmc_check_fh(mmap_cache* cache);
 int mmc_close_fh(mmap_cache* cache);
 int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...);
 char* _mmc_get_def_share_filename(mmap_cache * cache);

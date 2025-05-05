@@ -735,6 +735,10 @@ int mmc_do_expunge(
   void * new_kv_data = calloc(1, page_data_size);
   MU32 new_offset = 0;
 
+  /* Sanity check underlying fd is still the same file */
+  if (!mmc_check_fh(cache))
+    return 0;
+
   /* Start all new slots empty */
   memset(new_slot_data, 0, slot_data_size);
 
@@ -801,7 +805,7 @@ int mmc_do_expunge(
 
   ASSERT(_mmc_test_page(cache));
 
-  return 0;
+  return 1;
 }
 
 /*

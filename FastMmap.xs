@@ -373,7 +373,10 @@ fc_expunge(obj, mode, wb, len)
         }
       }
 
-      mmc_do_expunge(cache, num_expunge, new_num_slots, to_expunge);
+      if (!mmc_do_expunge(cache, num_expunge, new_num_slots, to_expunge)) {
+        croak("%s", mmc_error(cache));
+        XSRETURN_UNDEF;
+      }
     }
 
 

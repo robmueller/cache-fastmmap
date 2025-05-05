@@ -93,6 +93,9 @@ int mmc_open_cache_file(mmap_cache* cache, int * do_init) {
   /* Automatically close cache fd on exec */
   fcntl(fh, F_SETFD, FD_CLOEXEC);
 
+  fstat(fh, &statbuf);
+  cache->inode = statbuf.st_ino;
+
   cache->fh = fh;
 
   return 0;
@@ -127,6 +130,18 @@ int mmc_unmap_memory(mmap_cache* cache) {
     return _mmc_set_error(cache, errno, "Munmap of shared file %s failed", cache->share_file);
   }
   return res;
+}
+
+int mmc_check_fh(mmap_cache* cache) {
+  struct stat statbuf;
+
+  fstat(cache->fh, &statbuf);
+  if (cache->inode != statbuf.st_ino) {
+    _mmc_set_error(cache, 0, "Underlying cache file fd %d was inode %ld but now %ld, something messed up underlying file descriptors", cache->fh, cache->inode, statbuf.st_ino);
+    return 0;
+  }
+
+  return 1;
 }
 
 int mmc_close_fh(mmap_cache* cache) {
