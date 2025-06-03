@@ -188,21 +188,6 @@ the cache file. Your OS will want to write those dirty pages back to
 the file on the actual physical disk, but the rate it does that at is
 very OS dependent.
 
-In Linux, you have some control over how the OS writes those pages
-back using a number of parameters in /proc/sys/vm
-
-  dirty_background_ratio
-  dirty_expire_centisecs
-  dirty_ratio
-  dirty_writeback_centisecs
-
-How you tune these depends heavily on your setup.
-
-As an interesting point, if you use a highmem linux kernel, a change
-between 2.6.16 and 2.6.20 made the kernel flush memory a LOT more.
-There's details in this kernel mailing list thread:
-L<http://www.uwsg.iu.edu/hypermail/linux/kernel/0711.3/0804.html>
-
 In most cases, people are not actually concerned about the persistence
 of data in the cache, and so are happy to disable writing of any cache
 data back to disk at all. Baically what they want is an in memory only
@@ -218,8 +203,19 @@ And we put all our cache files on there. The tmpfs filesystem is smart
 enough to only use memory as required by files actually on the tmpfs,
 so making it 1G in size doesn't actually use 1G of memory, it only uses
 as much as the cache files we put on it. In all cases, we ensure that
-we never run out of real memory, so the cache files effectively act 
+we never run out of real memory, so the cache files effectively act
 just as named access points to shared memory.
+
+If you do put the cache file on a filesystem backed by a real disk,
+in Linux you have some control over how the OS writes those pages
+back using a number of parameters in /proc/sys/vm
+
+  dirty_background_ratio
+  dirty_expire_centisecs
+  dirty_ratio
+  dirty_writeback_centisecs
+
+How you tune these depends heavily on your setup.
 
 Some people have suggested using anonymous mmaped memory. Unfortunately
 we need a file descriptor to do the fcntl locking on, so we'd have
