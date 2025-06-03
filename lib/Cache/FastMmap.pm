@@ -1002,6 +1002,26 @@ sub get_and_set {
   return wantarray ? ($Value, $DidStore) : $Value;
 }
 
+=item I<exists($Key)>
+
+Search cache for given Key. Returns false if not found or true
+if found. This will *not* call the I<read_cb> if not found.
+
+This is also an optimisation over C<get()> as it will not uncompress or
+deserialize the value if found in the cache.
+
+=cut
+sub exists {
+  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+
+  # Hash value, lock page, read result
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
+  my $Unlock = $Self->_lock_page($HashPage);
+  my (undef, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $_[1]);
+
+  return $Found;
+}
+
 =item I<remove($Key, [ \%Options ])>
 
 Delete the given key from the cache

@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 62;
+use Test::More tests => 85;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -19,18 +19,27 @@ ok( !defined $FC->get(' '),         "empty get(' ')" );
 ok( !defined $FC->get(' ' x 1024),  "empty get(' ' x 1024)" );
 ok( !defined $FC->get(' ' x 65536), "empty get(' ' x 65536)" );
 
+ok( !$FC->exists(''),               "false exists('')" );
+ok( !$FC->exists(' '),              "false exists(' ')" );
+ok( !$FC->exists(' ' x 1024),       "false exists(' ' x 1024)" );
+ok( !$FC->exists(' ' x 65536),      "false exists(' ' x 65536)" );
+
 # Test basic store/get on key sizes
 ok( $FC->set('', 'abc'),          "set('', 'abc')" );
 is( $FC->get(''), 'abc',          "get('') eq 'abc'");
+ok( $FC->exists(''),              "true exists('')");
 my ($R, $DidStore) =  $FC->get_and_set('', sub { 'abcd' });
 is ($R, "abcd", "get_and_set('', sub { 'abcd' })" );
 is ($DidStore, 1, "get_and_set did store");
+ok( $FC->exists(''),              "true exists('')");
 
 ok( $FC->set(' ', 'def'),         "set(' ', 'def')" );
 is( $FC->get(' '), 'def',         "get(' ') eq 'def'");
+ok( $FC->exists(' '),             "true exists(' ')");
 
 ok( $FC->set(' ' x 1024, 'ghi'),  "set(' ' x 1024, 'ghi')");
 is( $FC->get(' ' x 1024), 'ghi',  "get(' ' x 1024) eq 'ghi'");
+ok( $FC->exists(' ' x 1024),      "true exists(' ' x 1024)");
 
 my ($R, $DidStore) =  $FC->get_and_set(' ' x 1024, sub { 'bcde' });
 is($R, "bcde", "get_and_set(' ' x 1024, sub { 'bcde' })" );
@@ -39,6 +48,7 @@ is($DidStore, 1, "get_and_set did store");
 # Bigger than the page size - should not work
 ok( !$FC->set(' ' x 65536, 'jkl'),  "set(' ' x 65536, 'jkl')");
 ok( !defined $FC->get(' ' x 65536), "empty get(' ' x 65536)");
+ok( !$FC->exists(' ' x 65536),      "false exists(' ' x 65536)");
 
 my ($R, $DidStore) =  $FC->get_and_set(' ' x 65536, sub { 'cdef' });
 ok( !defined $FC->get(' ' x 65536), "empty get(' ' x 65536)" );
@@ -47,29 +57,36 @@ is($DidStore, 0, "get_and_set did not store");
 # Test basic store/get on value sizes
 ok( $FC->set('abc', ''),          "set('abc', '')");
 is( $FC->get('abc'), '',          "get('abc') eq ''");
+ok( $FC->exists('abc'),           "true exists('abc')");
 
 ok( $FC->set('def', 'x'),         "set('def', 'x')");
 is( $FC->get('def'), 'x',         "get('def') eq 'x'");
+ok( $FC->exists('def'),           "true exists('def')");
 
 ok( $FC->set('ghi', 'x' . ('y' x 1024) . 'z'), "set('ghi', ...)");
 is( $FC->get('ghi'), 'x' . ('y' x 1024) . 'z', "get('ghi') eq ...");
+ok( $FC->exists('ghi'),           "true exists('ghi')");
 
 # Bigger than the page size - should not work
 ok( !$FC->set('jkl', 'x' . ('y' x 65536) . 'z'), "set('jkl', ...)");
-ok( !defined $FC->get('jkl'), "empty get('jkl')" );
+ok( !defined $FC->get('jkl'),     "empty get('jkl')" );
+ok( !$FC->exists('jkl'),          "false exists('jkl')");
 
 # Ref key should use 'stringy' version
 my $Ref = [ ];
 ok( $FC->set($Ref, 'abcd'),   "set($Ref)" );
 is( $FC->get($Ref), 'abcd',   "get($Ref)" );
 is( $FC->get("$Ref"), 'abcd', "get(\"$Ref\")" );
+ok( $FC->exists("$Ref"),      "true exists(\"$Ref\")");
 
 # Check UTF8
 ok( $FC->set("key\x{263A}", "val"), "set utf8 key" );
 is( $FC->get("key\x{263A}"), "val", "get utf8 key" );
+ok( $FC->exists("key\x{263A}"),     "true exists utf8 key");
 
 ok( $FC->set("key", "val\x{263A}"), "set utf8 val" );
 is( $FC->get("key"), "val\x{263A}", "get utf8 val" );
+ok( $FC->exists("key"),             "true exists utf8 val");
 
 ok( $FC->set("key2\x{263A}", "val2\x{263A}"), "set utf8 key/val" );
 is( $FC->get("key2\x{263A}"), "val2\x{263A}", "get utf8 key/val" );
@@ -78,12 +95,19 @@ is( $FC->get("key2\x{263A}"), "val2\x{263A}", "get utf8 key/val" );
 $FC->clear();
 
 ok( !defined $FC->get('abc'), "post clear 1" );
+ok( !$FC->exists('abc'), "false exists post clear 1" );
 ok( !defined $FC->get('def'), "post clear 2" );
+ok( !$FC->exists('def'), "false exists post clear 2" );
 ok( !defined $FC->get('ghi'), "post clear 3" );
+ok( !$FC->exists('ghi'), "false exists post clear 3" );
 ok( !defined $FC->get('jkl'), "post clear 4" );
+ok( !$FC->exists('jkl'), "false exists post clear 4" );
 ok( !defined $FC->get("key"), "post clear 5" );
+ok( !$FC->exists('key'), "false exists post clear 5" );
 ok( !defined $FC->get("key\x{263A}"), "post clear 6" );
+ok( !$FC->exists("key"), "false exists post clear 6");
 ok( !defined $FC->get("key2\x{263A}"), "post clear 7" );
+ok( !$FC->exists("key2\x{263A}"), "false exists post clear 7");
 
 # Check getting key/value lists
 ok( $FC->set("abc", "123"), "get_keys set 1" );
