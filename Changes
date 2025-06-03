@@ -1,6 +1,15 @@
 Revision history for Perl extension Cache::FastMmap.
 
-1.57 Mon May 5 16:25 2025
+1.59 Tue Jun 3 17:25 2025
+  - Add exists() method to check if key exists in the
+    cache. This avoid the decompress + deserialize cost
+  - Initialise pages under lock. This avoids potential
+    race conditions where multiple processes try and init
+    a cache file
+  - Correctly reset p_changed after storing changed details
+    back to cache.
+
+1.58 Mon May 5 16:25 2025
   - Catch a rare bug if someone closes our underlying file
     handle unexpectedly
 
