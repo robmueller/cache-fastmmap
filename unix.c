@@ -195,13 +195,13 @@ int mmc_lock_page(mmap_cache* cache, MU64 p_offset) {
   return 0;
 }
 
-int mmc_unlock_page(mmap_cache * cache) {
+int mmc_unlock_page(mmap_cache * cache, MU64 p_offset) {
   struct flock lock;
 
   /* Setup fcntl locking structure */
   lock.l_type = F_UNLCK;
   lock.l_whence = SEEK_SET;
-  lock.l_start = cache->p_offset;
+  lock.l_start = p_offset;
   lock.l_len = cache->c_page_size;
 
   /* And unlock page */

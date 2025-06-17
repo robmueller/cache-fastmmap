@@ -183,10 +183,10 @@ int mmc_lock_page(mmap_cache* cache, MU64 p_offset) {
   return 0;
 }
 
-int mmc_unlock_page(mmap_cache* cache) {
+int mmc_unlock_page(mmap_cache* cache, MU64 p_offset) {
     OVERLAPPED lock;
     memset(&lock, 0, sizeof(lock));
-    lock.Offset = cache->p_offset;
+    lock.Offset = p_offset;
     lock.hEvent = 0;
   
     UnlockFileEx(cache->fh, 0, cache->c_page_size, 0, &lock);

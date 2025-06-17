@@ -144,7 +144,7 @@ int mmc_init(mmap_cache * cache) {
       MU64 p_offset = (MU64)i * cache->c_page_size;
       mmc_lock_page(cache, p_offset);
       _mmc_init_page(cache, i);
-      mmc_unlock_page(cache);
+      mmc_unlock_page(cache, p_offset);
     }
 
     /* Unmap and re-map to stop gtop telling us our memory usage is up */
@@ -156,11 +156,11 @@ int mmc_init(mmap_cache * cache) {
   if (cache->test_file) {
     for (i = 0; i < cache->c_num_pages; i++) {
       int bad_page = 0;
+      MU64 p_offset = (MU64)i * cache->c_page_size;
 
       /* Need to lock page, which tests header structure */
       if (mmc_lock(cache, i)) {
         /* If that failed, assume bad header, so manually lock */
-        MU64 p_offset = (MU64)i * cache->c_page_size;
         mmc_lock_page(cache, p_offset);
         bad_page = 1;
 
@@ -179,7 +179,8 @@ int mmc_init(mmap_cache * cache) {
         i--;
       }
 
-      mmc_unlock_page(cache);
+      mmc_unlock_page(cache, p_offset);
+      cache->p_cur = NOPAGE;
     }
   }
 
@@ -262,7 +263,7 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   if (res) return res;
 
   if (!(P_Magic(p_ptr) == 0x92f7e3b1)) {
-    mmc_unlock_page(cache);
+    mmc_unlock_page(cache, p_offset);
     return _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %llu", p_cur, p_offset);
   }
 
@@ -285,7 +286,7 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   else if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size)
     res = _mmc_set_error(cache, 0, "cache free data mistmatch");
   if (res) {
-    mmc_unlock_page(cache);
+    mmc_unlock_page(cache, p_offset);
     return res;
   }
 
@@ -338,7 +339,7 @@ int mmc_unlock(mmap_cache * cache) {
   /* Test before unlocking */
   ASSERT(_mmc_test_page(cache));
 
-  mmc_unlock_page(cache);
+  mmc_unlock_page(cache, cache->p_offset);
 
   cache->p_cur = NOPAGE;
 
