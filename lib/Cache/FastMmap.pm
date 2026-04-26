@@ -780,53 +780,69 @@ unless you read the code to understand how it works
 sub get {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
+  my $SkipUnlock = $_[2] && $_[2]->{skip_unlock};
+
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  my $Unlock = $Self->_lock_page($HashPage);
-  my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $_[1]);
+  fc_lock($Cache, $HashPage);
 
-  # Value not found, check underlying data store
-  if (!$Found && (my $read_cb = $Self->{read_cb})) {
+  my ($Val, $Flags, $Found, $ExpireOn);
+  my $Err;
+  if (!eval {
+    ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $_[1]);
 
-    # Callback to read from underlying data store
-    # (unlock page first if we allow recursive calls
-    $Unlock = undef if $Self->{allow_recursive};
-    $Val = eval { $read_cb->($Self->{context}, $_[1]); };
-    my $Err = $@;
-    $Unlock = $Self->_lock_page($HashPage) if $Self->{allow_recursive};
+    # Value not found, check underlying data store
+    if (!$Found && (my $read_cb = $Self->{read_cb})) {
 
-    # Pass on any error
-    die $Err if $Err;
+      # Callback to read from underlying data store
+      # (unlock page first if we allow recursive calls)
+      if ($Self->{allow_recursive}) {
+        fc_unlock($Cache);
+        $Val = eval { $read_cb->($Self->{context}, $_[1]); };
+        my $CbErr = $@;
+        fc_lock($Cache, $HashPage);
+        die $CbErr if $CbErr;
+      } else {
+        $Val = $read_cb->($Self->{context}, $_[1]);
+      }
 
-    # If we found it, or want to cache not-found, store back into our cache
-    if (defined $Val || $Self->{cache_not_found}) {
+      # If we found it, or want to cache not-found, store back into our cache
+      if (defined $Val || $Self->{cache_not_found}) {
 
-      # Are we doing writeback's? If so, need to mark as dirty in cache
-      my $write_back = $Self->{write_back};
+        # Are we doing writeback's? If so, need to mark as dirty in cache
+        my $write_back = $Self->{write_back};
 
-      $Val = $Self->{serialize}(\$Val) if $Self->{serialize};
-      $Val = $Self->{compress}($Val) if $Self->{compress};
+        $Val = $Self->{serialize}(\$Val) if $Self->{serialize};
+        $Val = $Self->{compress}($Val) if $Self->{compress};
 
-      # Get key/value len (we've got 'use bytes'), and do expunge check to
-      #  create space if needed
-      my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
-      $Self->_expunge_page(2, 1, $KVLen);
+        # Get key/value len (we've got 'use bytes'), and do expunge check to
+        #  create space if needed
+        my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
+        $Self->_expunge_page(2, 1, $KVLen);
 
-      fc_write($Cache, $HashSlot, $_[1], $Val, -1, 0);
+        fc_write($Cache, $HashSlot, $_[1], $Val, -1, 0);
+      }
     }
+    1;
+  }) {
+    $Err = $@ || 'unknown error';
   }
 
-  # Unlock page and return any found value
-  # Unlock is done only if we're not in the middle of a get_set() operation.
-  my $SkipUnlock = $_[2] && $_[2]->{skip_unlock};
-  $Unlock = undef unless $SkipUnlock;
+  # On error, always unlock (caller can't clean up after a thrown exception).
+  # On success, unlock unless caller asked us to leave the page locked.
+  if (defined $Err) {
+    fc_unlock($Cache) if fc_is_locked($Cache);
+    die $Err;
+  }
+  fc_unlock($Cache) unless $SkipUnlock;
 
   # If not using raw values, use thaw() to turn data back into object
   $Val = $Self->{uncompress}($Val) if defined($Val) && $Self->{compress};
   $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
 
-  # If explicitly asked to skip unlocking, we return the reference to the unlocker
-  return ($Val, $Unlock, { $Found ? (expire_on => $ExpireOn) : () }) if $SkipUnlock;
+  # If explicitly asked to skip unlocking, return a sentinel so callers
+  # using the old 3-tuple unpack still work (slot 2 is now a placeholder).
+  return ($Val, 1, { $Found ? (expire_on => $ExpireOn) : () }) if $SkipUnlock;
 
   return $Val;
 }
@@ -867,32 +883,30 @@ sub set {
       (defined $Opts->{expire_time} ? parse_expire_time($Opts->{expire_time}, _time()): -1)
   ) : -1;
 
-  # Hash value, lock page
-  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-
-  # If skip_lock is passed, it's a *reference* to an existing lock we
-  #  have to take and delete so we can cleanup below before calling
-  #  the callback
-  my $Unlock = $Opts && $Opts->{skip_lock};
-  if ($Unlock) {
-    ($Unlock, $$Unlock) = ($$Unlock, undef);
-  } else {
-    $Unlock = $Self->_lock_page($HashPage);
-  }
-
   # Are we doing writeback's? If so, need to mark as dirty in cache
   my $write_back = $Self->{write_back};
 
-  # Get key/value len (we've got 'use bytes'), and do expunge check to
-  #  create space if needed
-  my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
-  $Self->_expunge_page(2, 1, $KVLen);
+  # Hash value, lock page (unless caller already holds the lock)
+  my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
+  fc_lock($Cache, $HashPage) unless $Opts && $Opts->{_locked};
 
-  # Now store into cache
-  my $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_on, $write_back ? FC_ISDIRTY : 0);
+  my ($DidStore, $Err);
+  if (!eval {
+    # Get key/value len (we've got 'use bytes'), and do expunge check to
+    #  create space if needed
+    my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
+    $Self->_expunge_page(2, 1, $KVLen);
 
-  # Unlock page
-  $Unlock = undef;
+    # Now store into cache
+    $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_on, $write_back ? FC_ISDIRTY : 0);
+    1;
+  }) {
+    $Err = $@ || 'unknown error';
+  }
+
+  # Always unlock — caller passed _locked to transfer ownership
+  fc_unlock($Cache);
+  die $Err if defined $Err;
 
   # If we're doing write-through, or write-back and didn't get into cache,
   #  write back to the underlying store
@@ -984,15 +998,23 @@ be unlocked (1.15 onwards)
 sub get_and_set {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  my ($Value, $Unlock, $Opts) = $Self->get($_[1], { skip_unlock => 1 });
+  my ($Value, undef, $Opts) = $Self->get($_[1], { skip_unlock => 1 });
+  # Page is still locked here.
 
-  # If this throws an error, $Unlock ref will still unlock page
-  my @NewValue = $_[2]->($_[1], $Value, $Opts);
+  # If the user sub dies, we must unlock before re-throwing.
+  my @NewValue = eval { $_[2]->($_[1], $Value, $Opts); };
+  my $Err = $@;
 
   my $DidStore = 0;
-  if (@NewValue) {
-    ($Value, my $Opts) = @NewValue;
-    $DidStore = $Self->set($_[1], $Value, { skip_lock => \$Unlock, %{$Opts || {}} });
+  if ($Err) {
+    fc_unlock($Cache);
+    die $Err;
+  } elsif (@NewValue) {
+    ($Value, my $SetOpts) = @NewValue;
+    # set() with _locked=>1 takes ownership of the lock and unlocks at end.
+    $DidStore = $Self->set($_[1], $Value, { _locked => 1, %{$SetOpts || {}} });
+  } else {
+    fc_unlock($Cache);
   }
 
   return wantarray ? ($Value, $DidStore) : $Value;
@@ -1012,8 +1034,9 @@ sub exists {
 
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  my $Unlock = $Self->_lock_page($HashPage);
+  fc_lock($Cache, $HashPage);
   my (undef, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $_[1]);
+  fc_unlock($Cache);
 
   return $Found;
 }
@@ -1030,21 +1053,12 @@ unless you read the code to understand how it works
 sub remove {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  # Hash value, lock page, read result
+  # Hash value, lock page (unless caller already holds the lock), delete
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-
-  # If skip_lock is passed, it's a *reference* to an existing lock we
-  #  have to take and delete so we can cleanup below before calling
-  #  the callback
-  my $Unlock = $_[2] && $_[2]->{skip_lock};
-  if ($Unlock) {
-    ($Unlock, $$Unlock) = ($$Unlock, undef);
-  } else {
-    $Unlock = $Self->_lock_page($HashPage);
-  }
+  fc_lock($Cache, $HashPage) unless $_[2] && $_[2]->{_locked};
 
   my ($DidDel, $Flags) = fc_delete($Cache, $HashSlot, $_[1]);
-  $Unlock = undef;
+  fc_unlock($Cache);
 
   # If we deleted from the cache, and it's not dirty, also delete
   #  from underlying store
@@ -1052,7 +1066,7 @@ sub remove {
      && (my $delete_cb = $Self->{delete_cb})) {
     eval { $delete_cb->($Self->{context}, $_[1]); };
   }
-  
+
   return $DidDel;
 }
 
@@ -1068,8 +1082,8 @@ isn't removed by us.
 sub get_and_remove {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
 
-  my ($Value, $Unlock) = $Self->get($_[1], { skip_unlock => 1 });
-  my $DidDel = $Self->remove($_[1], { skip_lock => \$Unlock });
+  my ($Value) = $Self->get($_[1], { skip_unlock => 1 });
+  my $DidDel = $Self->remove($_[1], { _locked => 1 });
   return wantarray ? ($Value, $DidDel) : $Value;
 }
 
@@ -1085,14 +1099,14 @@ sub expire {
 
   # Hash value, lock page, read result
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  my $Unlock = $Self->_lock_page($HashPage);
+  fc_lock($Cache, $HashPage);
   my ($Val, $Flags, $Found) = fc_read($Cache, $HashSlot, $_[1]);
 
   # If we found it, remove it
   if ($Found) {
     (undef, $Flags) = fc_delete($Cache, $HashSlot, $_[1]);
   }
-  $Unlock = undef;
+  fc_unlock($Cache);
 
   # If it's dirty, write it back
   if (($Flags & FC_ISDIRTY) && (my $write_cb = $Self->{write_cb})) {
@@ -1204,12 +1218,12 @@ sub get_statistics {
 
   my ($NReads, $NReadHits) = (0, 0);
   for (0 .. $Self->{num_pages}-1) {
-    my $Unlock = $Self->_lock_page($_);
+    fc_lock($Cache, $_);
     my ($PNReads, $PNReadHits) = fc_get_page_details($Cache);
     $NReads += $PNReads;
     $NReadHits += $PNReadHits;
     fc_reset_page_details($Cache) if $Clear;
-    $Unlock = undef;
+    fc_unlock($Cache);
   }
   return ($NReads, $NReadHits);
 }
@@ -1257,28 +1271,34 @@ sub multi_get {
 
   # Hash value page key, lock page
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  my $Unlock = $Self->_lock_page($HashPage);
+  fc_lock($Cache, $HashPage);
 
-  # For each key to find
   my ($Keys, %KVs) = ($_[2]);
-  for (@$Keys) {
+  my $Err;
+  if (!eval {
+    # For each key to find
+    for (@$Keys) {
 
-    # Hash key to get slot in this page and read
-    my $FinalKey = "$_[1]-$_";
-    (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
-    my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $FinalKey);
-    next unless $Found;
+      # Hash key to get slot in this page and read
+      my $FinalKey = "$_[1]-$_";
+      (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
+      my ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $FinalKey);
+      next unless $Found;
 
-    # If not using raw values, use thaw() to turn data back into object
-    $Val = $Self->{uncompress}($Val) if defined($Val) && $Self->{compress};
-    $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
+      # If not using raw values, use thaw() to turn data back into object
+      $Val = $Self->{uncompress}($Val) if defined($Val) && $Self->{compress};
+      $Val = ${$Self->{deserialize}($Val)} if defined($Val) && $Self->{deserialize};
 
-    # Save to return
-    $KVs{$_} = $Val;
+      # Save to return
+      $KVs{$_} = $Val;
+    }
+    1;
+  }) {
+    $Err = $@ || 'unknown error';
   }
 
-  # Unlock page and return any found value
-  $Unlock = undef;
+  fc_unlock($Cache);
+  die $Err if defined $Err;
 
   return \%KVs;
 }
@@ -1301,28 +1321,34 @@ sub multi_set {
 
   # Hash page key value, lock page
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  my $Unlock = $Self->_lock_page($HashPage);
+  fc_lock($Cache, $HashPage);
 
-  # Loop over each key/value storing into this page
   my $KVs = $_[2];
-  while (my ($Key, $Val) = each %$KVs) {
+  my $Err;
+  if (!eval {
+    # Loop over each key/value storing into this page
+    while (my ($Key, $Val) = each %$KVs) {
 
-    $Val = $Self->{serialize}(\$Val) if $Self->{serialize};
-    $Val = $Self->{compress}($Val) if $Self->{compress};
+      $Val = $Self->{serialize}(\$Val) if $Self->{serialize};
+      $Val = $Self->{compress}($Val) if $Self->{compress};
 
-    # Get key/value len (we've got 'use bytes'), and do expunge check to
-    #  create space if needed
-    my $FinalKey = "$_[1]-$Key";
-    my $KVLen = length($FinalKey) + length($Val);
-    $Self->_expunge_page(2, 1, $KVLen);
+      # Get key/value len (we've got 'use bytes'), and do expunge check to
+      #  create space if needed
+      my $FinalKey = "$_[1]-$Key";
+      my $KVLen = length($FinalKey) + length($Val);
+      $Self->_expunge_page(2, 1, $KVLen);
 
-    # Now hash key and store into page
-    (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
-    my $DidStore = fc_write($Cache, $HashSlot, $FinalKey, $Val, $expire_on, 0);
+      # Now hash key and store into page
+      (undef, $HashSlot) = fc_hash($Cache, $FinalKey);
+      my $DidStore = fc_write($Cache, $HashSlot, $FinalKey, $Val, $expire_on, 0);
+    }
+    1;
+  }) {
+    $Err = $@ || 'unknown error';
   }
 
-  # Unlock page
-  $Unlock = undef;
+  fc_unlock($Cache);
+  die $Err if defined $Err;
 
   return 1;
 }
@@ -1350,9 +1376,13 @@ sub _expunge_all {
 
   # Repeat expunge for each page
   for (0 .. $Self->{num_pages}-1) {
-    my $Unlock = $Self->_lock_page($_);
-    $Self->_expunge_page($Mode, $WB, -1);
-    $Unlock = undef;
+    fc_lock($Cache, $_);
+    my $Err;
+    if (!eval { $Self->_expunge_page($Mode, $WB, -1); 1; }) {
+      $Err = $@ || 'unknown error';
+    }
+    fc_unlock($Cache);
+    die $Err if defined $Err;
   }
 
 }
@@ -1386,21 +1416,6 @@ sub _expunge_page {
     }
     eval { $write_cb->($Self->{context}, $_->{key}, $Val, $_->{expire_on}); };
   }
-}
-
-=item I<_lock_page($Page)>
-
-Lock a given page in the cache, and return an object
-reference that when DESTROYed, unlocks the page
-
-=cut
-sub _lock_page {
-  my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
-  my $Unlock = Cache::FastMmap::OnLeave->new(sub {
-    fc_unlock($Cache) if fc_is_locked($Cache);
-  });
-  fc_lock($Cache, $_[1]);
-  return $Unlock;
 }
 
 sub _time {
@@ -1462,34 +1477,6 @@ sub END {
 
 sub CLONE {
   die "Cache::FastMmap does not support threads sorry";
-}
-
-1;
-
-package Cache::FastMmap::OnLeave;
-use strict;
-
-sub new {
-  my $Class = shift;
-  my $Ref = \$_[0];
-  bless $Ref, $Class;
-  return $Ref;
-}
-
-sub disable {
-  ${$_[0]} = undef;
-}
-
-sub DESTROY {
-  my $e = $@;  # Save errors from code calling us
-  eval {
-
-  my $Ref = shift;
-  $$Ref->() if $$Ref;
-
-  };
-  # $e .= "        (in cleanup) $@" if $@;
-  $@ = $e;
 }
 
 1;
