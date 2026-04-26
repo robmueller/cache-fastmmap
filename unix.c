@@ -134,7 +134,13 @@ int mmc_unmap_memory(mmap_cache* cache) {
 int mmc_check_fh(mmap_cache* cache) {
   struct stat statbuf;
 
-  fstat(cache->fh, &statbuf);
+  /* fstat must succeed before we can trust statbuf.st_ino. If it fails
+   * (e.g. fd was closed externally) treat that as the same kind of "fd
+   * messed with" condition the inode check is here to catch. */
+  if (fstat(cache->fh, &statbuf) == -1) {
+    _mmc_set_error(cache, errno, "Underlying cache file fd %d fstat failed, something messed up underlying file descriptors", cache->fh);
+    return 0;
+  }
   if (cache->inode != statbuf.st_ino) {
     _mmc_set_error(cache, 0, "Underlying cache file fd %d was inode %ld but now %ld, something messed up underlying file descriptors", cache->fh, cache->inode, statbuf.st_ino);
     return 0;
@@ -229,10 +235,12 @@ int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
   /* Start with error string passed */
   vsnprintf(errbuf, 1023, error_string, ap);
 
-  /* Add system error code if passed */
+  /* Add system error code if passed. */
   if (err) {
-    strncat(errbuf, ": ", 1023);
-    strncat(errbuf, strerror(err), 1023);
+    size_t used = strlen(errbuf);
+    if (used < sizeof(errbuf) - 1) {
+      snprintf(errbuf + used, sizeof(errbuf) - used, ": %s", strerror(err));
+    }
   }
 
   /* Save in cache object */

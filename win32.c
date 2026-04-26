@@ -167,29 +167,40 @@ int mmc_lock_page(mmap_cache* cache, MU64 p_offset) {
     lock.Offset = (DWORD)(p_offset & 0xffffffff);
     lock.OffsetHigh = (DWORD)((p_offset >> 32) & 0xffffffff);
     lock.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-  
+
     if (LockFileEx(cache->fh, 0, 0, cache->c_page_size, 0, &lock) == 0) {
-        _mmc_set_error(cache, GetLastError(), "LockFileEx failed");
-        return -1;
-    }
-    
-    lock_res = WaitForSingleObjectEx(lock.hEvent, 10000, FALSE);
-    
-    if (lock_res != WAIT_OBJECT_0 || GetOverlappedResult(cache->fh, &lock, &bytesTransfered, FALSE) == FALSE) {
+        DWORD err = GetLastError();
         CloseHandle(lock.hEvent);
-        _mmc_set_error(cache, GetLastError(), "Overlapped Lock failed");
+        _mmc_set_error(cache, err, "LockFileEx failed");
         return -1;
     }
-  return 0;
+
+    lock_res = WaitForSingleObjectEx(lock.hEvent, 10000, FALSE);
+
+    if (lock_res != WAIT_OBJECT_0 || GetOverlappedResult(cache->fh, &lock, &bytesTransfered, FALSE) == FALSE) {
+        DWORD err = GetLastError();
+        CloseHandle(lock.hEvent);
+        _mmc_set_error(cache, err, "Overlapped Lock failed");
+        return -1;
+    }
+    /* Always close the event handle once the lock has been acquired,
+     * otherwise long-running processes leak one HANDLE per lock. */
+    CloseHandle(lock.hEvent);
+    return 0;
 }
 
 int mmc_unlock_page(mmap_cache* cache, MU64 p_offset) {
     OVERLAPPED lock;
     memset(&lock, 0, sizeof(lock));
-    lock.Offset = p_offset;
+    /* Offset is a DWORD so we must split p_offset across Offset/OffsetHigh,
+     * otherwise we'd unlock at a different offset than we locked at for
+     * any cache file larger than 4GB. */
+    lock.Offset = (DWORD)(p_offset & 0xffffffff);
+    lock.OffsetHigh = (DWORD)((p_offset >> 32) & 0xffffffff);
     lock.hEvent = 0;
-  
+
     UnlockFileEx(cache->fh, 0, cache->c_page_size, 0, &lock);
+    return 0;
 }
 
 /*
@@ -211,19 +222,23 @@ int _mmc_set_error(mmap_cache *cache, int err, char * error_string, ...) {
   /* Start with error string passed */
   vsnprintf(errbuf, 1023, error_string, ap);
 
-  /* Add system error code if passed */
+  /* Add system error code if passed. */
   if (err) {
-    strncat(errbuf, ": ", 1023);
     FormatMessage(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | 
+        FORMAT_MESSAGE_ALLOCATE_BUFFER |
         FORMAT_MESSAGE_FROM_SYSTEM,
         NULL,
         err,
         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
         (LPTSTR) &msgBuff,
-        0, NULL );    
-    strncat(errbuf, msgBuff, 1023);
-    LocalFree(msgBuff);
+        0, NULL );
+    if (msgBuff) {
+      size_t used = strlen(errbuf);
+      if (used < sizeof(errbuf) - 1) {
+        snprintf(errbuf + used, sizeof(errbuf) - used, ": %s", msgBuff);
+      }
+      LocalFree(msgBuff);
+    }
   }
 
   /* Save in cache object */

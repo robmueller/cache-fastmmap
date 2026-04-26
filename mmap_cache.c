@@ -247,8 +247,9 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   void * p_ptr;
   int res = 0;
 
-  /* Argument sanity check */
-  if (p_cur == NOPAGE || p_cur > cache->c_num_pages)
+  /* Argument sanity check. Valid pages are 0 .. c_num_pages-1; NOPAGE is
+   * already excluded by the >= comparison since c_num_pages << NOPAGE. */
+  if (p_cur >= cache->c_num_pages)
     return _mmc_set_error(cache, 0, "page %u is NOPAGE or larger than number of pages", p_cur);
 
   /* Check not already locked */
@@ -276,10 +277,11 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   cache->p_n_reads = P_NReads(p_ptr);
   cache->p_n_read_hits = P_NReadHits(p_ptr);
 
-  /* Reality check */
-  if (cache->p_num_slots < 89 || cache->p_num_slots > cache->c_page_size)
+  /* Reality check. Pages start with start_slots and only ever grow via
+   * expunge, so num_slots should never be below the configured start_slots. */
+  if (cache->p_num_slots < cache->start_slots || cache->p_num_slots > cache->c_page_size)
     res = _mmc_set_error(cache, 0, "cache num_slots mistmatch");
-  else if (cache->p_free_slots < 0 || cache->p_free_slots > cache->p_num_slots)
+  else if (cache->p_free_slots > cache->p_num_slots)
     res = _mmc_set_error(cache, 0, "cache free slots mustmatch");
   else if (cache->p_old_slots > cache->p_free_slots)
     res = _mmc_set_error(cache, 0, "cache old slots mistmatch");
@@ -292,8 +294,8 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
 
   /* Check page header */
   ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
-  ASSERT(P_NumSlots(p_ptr) >= 89 && P_NumSlots(p_ptr) < cache->c_page_size);
-  ASSERT(P_FreeSlots(p_ptr) >= 0 && P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
+  ASSERT(P_NumSlots(p_ptr) >= cache->start_slots && P_NumSlots(p_ptr) < cache->c_page_size);
+  ASSERT(P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
   ASSERT(P_OldSlots(p_ptr) <= P_FreeSlots(p_ptr));
   ASSERT(P_FreeData(p_ptr) + P_FreeBytes(p_ptr) == cache->c_page_size);
 
@@ -492,18 +494,24 @@ int mmc_write(
 
   ASSERT(cache->p_cur != NOPAGE);
 
-  /* If found, delete slot for new value */
-  if (*slot_ptr > 1) {
-    _mmc_delete_slot(cache, slot_ptr);
-    ASSERT(*slot_ptr == 1);
-  }
-
-  ASSERT(*slot_ptr <= 1);
-
-  /* If there's space, store the key/value in the data section */
+  /* If there's space, store the key/value in the data section.
+   * Important: we must not delete an existing slot for this key unless we
+   * actually have space for the replacement; otherwise a failed set() would
+   * silently destroy the previous value. */
   if (cache->p_free_bytes >= kvlen) {
-    MU32 * base_det = PTR_ADD(cache->p_base, cache->p_free_data);
-    MU32 now = time_override ? time_override : (MU32)time(0);
+    MU32 * base_det;
+    MU32 now;
+
+    /* If found, delete the existing slot before reusing it for the new value */
+    if (*slot_ptr > 1) {
+      _mmc_delete_slot(cache, slot_ptr);
+      ASSERT(*slot_ptr == 1);
+    }
+
+    ASSERT(*slot_ptr <= 1);
+
+    base_det = PTR_ADD(cache->p_base, cache->p_free_data);
+    now = time_override ? time_override : (MU32)time(0);
 
     /* Calculate expiry time */
     if (expire_on == (MU32)-1)
@@ -904,8 +912,15 @@ MU32 * mmc_iterate_next(mmap_cache_it * it) {
         }
       }
 
-      /* Lock the new page number */
-      mmc_lock(it->cache, it->p_cur);
+      /* Lock the new page number. If the lock fails (bad header, sanity
+       * check failed, etc.) cache->p_base_slots is not updated to the new
+       * page, so walking it would re-iterate stale memory. End iteration
+       * cleanly instead; the error is left in cache->last_error. */
+      if (mmc_lock(it->cache, it->p_cur) != 0) {
+        it->p_cur = NOPAGE;
+        it->slot_ptr = 0;
+        return 0;
+      }
 
       /* Setup new pointers */
       slot_ptr = cache->p_base_slots;
