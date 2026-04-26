@@ -8,8 +8,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Recently-written entries stay readable across small inter-write
+# delays, i.e. churning the cache with new keys doesn't immediately
+# evict the last few entries from their pages.
 
 my $FC = Cache::FastMmap->new(
   page_size => 8192,

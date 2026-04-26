@@ -7,8 +7,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Cache hit-rate behaviour over random read/write workloads at varying
+# read/write ratios. Asserts hit rate is 0% with no reads, ~100% when
+# the working set fits, and degrades sensibly when it doesn't.
 
 my $FC = Cache::FastMmap->new(init_file => 1, serializer => '');
 ok( defined $FC );

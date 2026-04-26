@@ -18,8 +18,10 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Atomicity of get_and_set / get_and_remove under concurrent access:
+# two forked processes hammer the same key in parallel and the final
+# state must reflect every increment / never observe a half-removed
+# value.
 
 my $FC = Cache::FastMmap->new(init_file => 1, serializer => '');
 ok( defined $FC );

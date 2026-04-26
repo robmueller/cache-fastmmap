@@ -25,8 +25,10 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Memory-leak detection. Repeats new()/destroy() and a tight churn loop
+# of get/set/remove with read/write/delete callbacks, sampling RSS via
+# GTop or /proc/$$/status; process size must not grow across runs.
+# Skipped if neither is available.
 
 our ($DidRead, $DidWrite, $DidDelete, $HitCount);
 

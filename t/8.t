@@ -7,8 +7,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Default Storable serializer: round-trips arrayrefs, undef values and
+# UTF-8 keys/values; checks get_keys flat and detail forms; checks
+# clear() actually removes everything.
 
 my $FC = Cache::FastMmap->new(init_file => 1);
 ok( defined $FC );

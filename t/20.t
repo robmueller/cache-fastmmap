@@ -6,8 +6,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# share_file file-mode handling: default permissions are 0640, an
+# explicit `permissions` parameter overrides that, and the value is
+# applied regardless of process umask.
 
 
 if( $^O eq 'MSWin32' ) {

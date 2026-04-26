@@ -7,8 +7,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# write_through mode against a hash-based backing store: every set()
+# propagates to the backing store immediately, so the backing store
+# stays in sync regardless of cache eviction.
 
 # Test a backing store just made of a local hash
 my %BackingStore = (

@@ -7,8 +7,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Mixed set / remove / overwrite churn against a single page: every
+# subsequent get must return the value last written for that key
+# (slot ordering invariant).
 
 my $FC = Cache::FastMmap->new(
   init_file => 1,

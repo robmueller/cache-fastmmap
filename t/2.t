@@ -8,8 +8,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Item expiry. Uses _set_time_override to fast-forward the clock and
+# verifies that entries past their expire_time are gone, including ones
+# stored via get_and_set with per-call expiry options.
 
 my $FC = Cache::FastMmap->new(init_file => 1, expire_time => 3, serializer => '');
 ok( defined $FC );

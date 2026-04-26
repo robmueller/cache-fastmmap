@@ -7,8 +7,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# Basic API round-trips: get/set/exists/remove with empty, single-char and
+# large keys; get_and_set / get_and_remove return values; multi_get and
+# multi_set across page-keys.
 
 my $FC = Cache::FastMmap->new(init_file => 1, serializer => '');
 ok( defined $FC );

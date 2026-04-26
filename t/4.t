@@ -7,8 +7,9 @@ use strict;
 
 #########################
 
-# Insert your test code below, the Test::More module is use()ed here so read
-# its man page ( perldoc Test::More ) for help writing this test script.
+# write_back mode against a hash-based backing store: writes accumulate
+# in the cache, only spill to the backing store on eviction or empty(),
+# and read_cb refills from the backing store when items aren't cached.
 
 # Test a backing store just made of a local hash
 my %BackingStore = (
