@@ -1,5 +1,43 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.60 Sat Apr 25 23:18 2026
+  - Remove Cache::FastMmap::OnLeave guard object and inline
+    fc_lock/fc_unlock at every call site. The per-call cost
+    of building and destroying the guard closure was a
+    meaningful share of CPU in cache-heavy workloads.
+  - Replace the internal skip_lock/skip_unlock guard-passing
+    pattern (used by get_and_set / get_and_remove) with a
+    simpler _locked => 1 boolean flag.
+  - Preserve the documented exception-safety contract for
+    get_and_set, plus the equivalent unwritten contract for
+    get (read_cb that dies), multi_get, and multi_set: the
+    page lock is always released even when user code throws.
+  - Add t/24.t covering the lock-release contract on every
+    exception path.
+  - mmc_write: check for available space before deleting an
+    existing slot for the key, so a failed set() preserves
+    the previous value instead of silently losing it.
+  - _mmc_set_error (unix.c, win32.c): use snprintf into the
+    remaining buffer space instead of strncat with the wrong
+    size argument, which could overflow errbuf on long error
+    messages.
+  - mmc_lock: fix off-by-one allowing page == c_num_pages
+    (one past the last valid page).
+  - mmc_lock: replace hardcoded num_slots >= 89 sanity check
+    with cache->start_slots, so caches built with custom
+    start_slots values lock correctly.
+  - mmc_check_fh: check fstat() return value before trusting
+    statbuf.st_ino, restoring the safety net the function
+    was added for.
+  - mmc_iterate_next: end iteration cleanly if mmc_lock fails
+    instead of walking stale page state.
+  - Win32 mmc_unlock_page: split p_offset into Offset and
+    OffsetHigh and add the missing return, so caches larger
+    than 4GB unlock at the same offset they locked at.
+  - Win32 mmc_lock_page: CloseHandle on the event handle on
+    every exit path; previously every successful lock leaked
+    one HANDLE.
+
 1.59 Tue Jun 3 17:25 2025
   - Add exists() method to check if key exists in the
     cache. This avoid the decompress + deserialize cost
