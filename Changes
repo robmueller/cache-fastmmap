@@ -1,6 +1,6 @@
 Revision history for Perl extension Cache::FastMmap.
 
-1.60 Sat Apr 25 23:18 2026
+1.61 Sat Apr 25 23:18 2026
   - Remove Cache::FastMmap::OnLeave guard object and inline
     fc_lock/fc_unlock at every call site. The per-call cost
     of building and destroying the guard closure was a
@@ -37,6 +37,10 @@ Revision history for Perl extension Cache::FastMmap.
   - Win32 mmc_lock_page: CloseHandle on the event handle on
     every exit path; previously every successful lock leaked
     one HANDLE.
+
+1.60 Wed Jun 18 9:25 2025
+  - Fix very broken 1.59 release that was leaving pages
+    locked after initialising them.
 
 1.59 Tue Jun 3 17:25 2025
   - Add exists() method to check if key exists in the
