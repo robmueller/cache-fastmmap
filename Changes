@@ -1,5 +1,20 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.62 Sun May 17 2026
+  - Fix remaining Perl-side lock leaks when user supplied
+    serializer/deserializer code throws while get_and_set()
+    or other locked paths are active.
+  - Validate get_and_set() callback options before merging
+    them into the internal locked set() call.
+  - Fix expire() in write-back mode to write back the
+    original Perl value, not the serialized/compressed bytes.
+  - Track all live empty_on_exit caches independently instead
+    of keeping only one weak reference per class.
+  - Preserve silent write/delete callback failure behavior while
+    keeping locks exception-safe for serializer/deserializer failures.
+  - Add regression coverage for expire() with serialized values,
+    multiple empty_on_exit caches, and locked exception paths.
+
 1.61 Sat Apr 25 23:18 2026
   - Remove Cache::FastMmap::OnLeave guard object and inline
     fc_lock/fc_unlock at every call site. The per-call cost
@@ -355,4 +370,3 @@ Revision history for Perl extension Cache::FastMmap.
 
 1.00  Sat Dec 13 14:19 2003
 	- initial release
-

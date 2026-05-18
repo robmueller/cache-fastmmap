@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 13;
+use Test::More tests => 14;
 BEGIN { use_ok('Cache::FastMmap') };
 use strict;
 
@@ -110,7 +110,14 @@ $FC = undef;
 
 ok( eq_hash(\%WrittenItems, \%BackingStore), "items match 4");
 
+{
+  my $FC1 = Cache::FastMmap->new(init_file => 1, serializer => '', empty_on_exit => 1);
+  my $FC2 = Cache::FastMmap->new(init_file => 1, serializer => '', empty_on_exit => 1);
+
+  my $live = grep { defined } values %Cache::FastMmap::LiveCaches;
+  is( $live, 2, "empty_on_exit tracks multiple live caches" );
+}
+
 sub RandStr {
   return join '', map { chr(ord('a') + rand(26)) } (1 .. $_[0]);
 }
-

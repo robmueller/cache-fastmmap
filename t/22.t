@@ -1,7 +1,7 @@
 
 #########################
 
-use Test::More tests => 19;
+use Test::More tests => 22;
 BEGIN { use_ok('Cache::FastMmap') };
 use Data::Dumper;
 use strict;
@@ -70,4 +70,24 @@ $FC->remove('foo');
 
 ok( eq_hash(\%BackingStore, { bar => '456def', baz => '789ghi' }), "items match remove 1");
 
+{
+  my %SerializedBackingStore;
+  my $SerializedFC = Cache::FastMmap->new(
+    init_file => 1,
+    num_pages => 1,
+    page_size => 8192,
+    context => \%SerializedBackingStore,
+    write_cb => sub { $_[0]->{$_[1]} = $_[2]; },
+    write_action => 'write_back',
+  );
+
+  my $value = { a => 1, b => [ 2, 3 ] };
+  ok( $SerializedFC->set('structured', $value), 'store serialized item' );
+  ok( $SerializedFC->expire('structured'), 'expire serialized item' );
+  is_deeply(
+    $SerializedBackingStore{structured},
+    $value,
+    'explicit expire writes back deserialized value'
+  );
+}
 

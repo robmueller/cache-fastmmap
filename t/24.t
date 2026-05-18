@@ -21,7 +21,7 @@ BEGIN {
   if ($^O eq "MSWin32") {
     plan skip_all => "alarm() unreliable on $^O";
   } else {
-    plan tests => 17;
+    plan tests => 26;
   }
 }
 BEGIN { use_ok('Cache::FastMmap') };
@@ -150,4 +150,58 @@ sub run_with_deadlock_guard {
   my ($dead) = run_with_deadlock_guard(5,
     sub { $FC->multi_set("page", { ok => 'still-fine' }) });
   is( $dead, 0, "[multi_set ser die] no deadlock on follow-up multi_set" );
+}
+
+#########################
+# get_and_set: deserializer dies while get() is returning with skip_unlock.
+
+{
+  my $FC = Cache::FastMmap->new(
+    init_file => 1,
+    serializer => [
+      sub { ${ $_[0] } },
+      sub { die "locked-deser-boom\n" if $_[0] eq 'POISON'; \$_[0] },
+    ],
+  );
+  ok( $FC->set("k", "POISON"), "[get_and_set locked deser die] seed poison" );
+
+  eval { $FC->get_and_set("k", sub { return "unused" }) };
+  like( $@, qr/locked-deser-boom/, "[get_and_set locked deser die] re-throws" );
+
+  my ($dead) = run_with_deadlock_guard(5, sub { $FC->set("k", "after") });
+  is( $dead, 0, "[get_and_set locked deser die] no deadlock on follow-up set" );
+}
+
+#########################
+# get_and_set: serializer dies inside set() while it owns the existing lock.
+
+{
+  my $FC = Cache::FastMmap->new(
+    init_file => 1,
+    serializer => [
+      sub { die "locked-ser-boom\n" if ${ $_[0] } eq 'POISON'; ${ $_[0] } },
+      sub { \$_[0] },
+    ],
+  );
+  ok( $FC->set("k", "initial"), "[get_and_set locked ser die] seed initial" );
+
+  eval { $FC->get_and_set("k", sub { return "POISON" }) };
+  like( $@, qr/locked-ser-boom/, "[get_and_set locked ser die] re-throws" );
+
+  my ($dead) = run_with_deadlock_guard(5, sub { $FC->set("k", "after") });
+  is( $dead, 0, "[get_and_set locked ser die] no deadlock on follow-up set" );
+}
+
+#########################
+# get_and_set: non-hash set options from callback must not strand the lock.
+
+{
+  my $FC = Cache::FastMmap->new(init_file => 1, serializer => '');
+  ok( $FC->set("k", "initial"), "[get_and_set bad opts] seed initial" );
+
+  eval { $FC->get_and_set("k", sub { return ("after", "bad-options") }) };
+  like( $@, qr/options must be a hash reference/, "[get_and_set bad opts] re-throws" );
+
+  my ($dead) = run_with_deadlock_guard(5, sub { $FC->set("k", "after") });
+  is( $dead, 0, "[get_and_set bad opts] no deadlock on follow-up set" );
 }
