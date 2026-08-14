@@ -396,17 +396,19 @@ int mmc_hash(
  *   cache_mmap * cache, MU32 hash_slot,
  *   void *key_ptr, int key_len,
  *   void **val_ptr, int *val_len,
- *   MU32 *expire_on, MU32 *flags
+ *   MU32 *expire_on, MU32 *flags, MU64 *modseq
  * )
  *
- * Read key from current page
+ * Read key from current page. Tombstones read as not found. If the
+ * value carries a modseq, it's returned via *modseq and val_ptr/val_len
+ * cover just the value bytes (check FC_HASMODSEQ in *flags)
  *
 */
 int mmc_read(
   mmap_cache *cache, MU32 hash_slot,
   void *key_ptr, int key_len,
   void **val_ptr, int *val_len,
-  MU32 *expire_on_p, MU32 *flags_p
+  MU32 *expire_on_p, MU32 *flags_p, MU64 *modseq_p
 ) {
   MU32 * slot_ptr;
 
@@ -444,6 +446,12 @@ int mmc_read(
       return -1;
     }
 
+    /* A tombstone is a miss (don't bump hit time - if it LRUs out
+     * early that just degrades to plain delete semantics) */
+    if (S_Flags(base_det) & FC_TOMBSTONE) {
+      return -1;
+    }
+
     /* Update hit time */
     S_LastAccess(base_det) = now;
 
@@ -452,6 +460,13 @@ int mmc_read(
     *expire_on_p = expire_on;
     *val_len = S_ValLen(base_det);
     *val_ptr = S_ValPtr(base_det);
+
+    /* Split off the modseq prefix if the value carries one */
+    if (*flags_p & FC_HASMODSEQ) {
+      memcpy(modseq_p, *val_ptr, FC_MODSEQ_LEN);
+      *val_ptr = PTR_ADD(*val_ptr, FC_MODSEQ_LEN);
+      *val_len -= FC_MODSEQ_LEN;
+    }
 
     /* Increase read hit count */
     if (cache->enable_stats) {
@@ -468,20 +483,31 @@ int mmc_read(
  *   cache_mmap * cache, MU32 hash_slot,
  *   void *key_ptr, int key_len,
  *   void *val_ptr, int val_len,
- *   MU32 expire_on, MU32 flags
+ *   MU32 expire_on, MU32 flags, MU64 modseq
  * )
  *
- * Write key to current page
+ * Write key to current page. Returns 1 if stored, 0 if there was no
+ * space, -1 if the store was refused by the conditional-store rules
+ * (see below). modseq is only used if flags has FC_HASMODSEQ set
+ * (always set it with FC_TOMBSTONE).
+ *
+ * Conditional stores: an unexpired tombstone refuses any store without
+ * a modseq, and any store with an older modseq. A live entry with a
+ * modseq refuses stores with an older modseq. Tombstoning never lowers
+ * an existing tombstone's modseq, and tombstoning over a live entry
+ * whose modseq is already newer keeps the entry; both are success
+ * no-ops (the cache already reflects something at least as new).
  *
 */
 int mmc_write(
   mmap_cache *cache, MU32 hash_slot,
   void *key_ptr, int key_len,
   void *val_ptr, int val_len,
-  MU32 expire_on, MU32 flags
+  MU32 expire_on, MU32 flags, MU64 modseq
 ) {
   int did_store = 0;
-  MU32 kvlen = KV_SlotLen(key_len, val_len);
+  int ms_len = (flags & FC_HASMODSEQ) ? FC_MODSEQ_LEN : 0;
+  MU32 kvlen = KV_SlotLen(key_len, val_len + ms_len);
 
   /* Search for slot with given key */
   MU32 * slot_ptr = _mmc_find_slot(cache, hash_slot, key_ptr, key_len, 1);
@@ -489,6 +515,37 @@ int mmc_write(
   /* If all slots full, definitely can't store */
   if (!slot_ptr)
     return 0;
+
+  /* Check the conditional-store rules against any existing live entry */
+  if (*slot_ptr > 1) {
+    MU32 * old_det = S_Ptr(cache->p_base, *slot_ptr);
+    MU32 old_flags = S_Flags(old_det);
+    MU32 old_expire = S_ExpireOn(old_det);
+    MU32 now = time_override ? time_override : (MU32)time(0);
+
+    if ((old_flags & FC_HASMODSEQ) && !(old_expire && now >= old_expire)) {
+      MU64 old_modseq;
+      memcpy(&old_modseq, S_ValPtr(old_det), FC_MODSEQ_LEN);
+
+      if (old_flags & FC_TOMBSTONE) {
+        if (flags & FC_TOMBSTONE) {
+          /* Re-tombstone: never lower the modseq */
+          if (modseq <= old_modseq)
+            return 1;
+        } else if (!(flags & FC_HASMODSEQ) || modseq < old_modseq) {
+          /* Value is older than the invalidating change (or can't say) */
+          return -1;
+        }
+      } else if (flags & FC_TOMBSTONE) {
+        /* Stale invalidation: the live entry is already newer */
+        if (modseq <= old_modseq)
+          return 1;
+      } else if ((flags & FC_HASMODSEQ) && modseq < old_modseq) {
+        /* Never regress a live value to an older one */
+        return -1;
+      }
+    }
+  }
 
   ROUNDLEN(kvlen);
 
@@ -523,11 +580,13 @@ int mmc_write(
     S_SlotHash(base_det) = hash_slot;
     S_Flags(base_det) = flags;
     S_KeyLen(base_det) = (MU32)key_len;
-    S_ValLen(base_det) = (MU32)val_len;
+    S_ValLen(base_det) = (MU32)(val_len + ms_len);
 
-    /* Copy key/value to data section */
+    /* Copy key/value to data section, modseq prefix first if present */
     memcpy(S_KeyPtr(base_det), key_ptr, key_len);
-    memcpy(S_ValPtr(base_det), val_ptr, val_len);
+    if (ms_len)
+      memcpy(S_ValPtr(base_det), &modseq, ms_len);
+    memcpy(PTR_ADD(S_ValPtr(base_det), ms_len), val_ptr, val_len);
 
     /* Update used slots/free data info */
     cache->p_free_slots--;
@@ -978,13 +1037,14 @@ void mmc_iterate_close(mmap_cache_it * it) {
  *   MU32 * base_det,
  *   void ** key_ptr, int * key_len,
  *   void ** val_ptr, int * val_len,
- *   MU32 * last_access, MU32 * expire_on, MU32 * flags
+ *   MU32 * last_access, MU32 * expire_on, MU32 * flags, MU64 * modseq
  * )
  *
  * Given a base_det pointer to entries details
  * (as returned by mmc_iterate_next(...) and
  * mmc_calc_expunge(...)) return details of that
- * entry in the cache
+ * entry in the cache. Like mmc_read, a modseq prefix is split off
+ * into *modseq and val_ptr/val_len cover just the value bytes
  *
 */
 void mmc_get_details(
@@ -992,7 +1052,7 @@ void mmc_get_details(
   MU32 * base_det,
   void ** key_ptr, int * key_len,
   void ** val_ptr, int * val_len,
-  MU32 * last_access, MU32 * expire_on, MU32 * flags
+  MU32 * last_access, MU32 * expire_on, MU32 * flags, MU64 * modseq
 ) {
   cache = cache;
 
@@ -1005,6 +1065,12 @@ void mmc_get_details(
   *last_access = S_LastAccess(base_det);
   *expire_on = S_ExpireOn(base_det);
   *flags = S_Flags(base_det);
+
+  if (*flags & FC_HASMODSEQ) {
+    memcpy(modseq, *val_ptr, FC_MODSEQ_LEN);
+    *val_ptr = PTR_ADD(*val_ptr, FC_MODSEQ_LEN);
+    *val_len -= FC_MODSEQ_LEN;
+  }
 }
 
 

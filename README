@@ -6,6 +6,11 @@ in C for performance. It uses fcntl locking to ensure multiple
 processes can safely access the cache at the same time. It uses
 a basic LRU algorithm to keep the most used entries in the cache.
 
+Supports tombstones and conditional stores keyed on a 64 bit
+modseq, so cache invalidation can prevent stale in-flight values
+being written back over newer data (see the TOMBSTONES AND
+MODSEQS section of the POD documentation).
+
 INSTALLATION
 
 To install this module type the following:

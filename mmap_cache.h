@@ -186,6 +186,19 @@ typedef uint32_t MU32;
 /* Unsigned 64 bit integer */
 typedef uint64_t MU64;
 
+/* Entry flag bits interpreted by the C layer. The perl level uses low
+ * bits (FC_ISDIRTY = 1); the XS wrapper uses 1<<29 and up (FC_UNDEF
+ * etc). These two live here because mmc_write/mmc_read interpret them.
+ *
+ * FC_TOMBSTONE: entry is a tombstone - a miss that remembers the
+ * modseq of the change that invalidated the key, so stores of older
+ * values can be refused. FC_HASMODSEQ: the stored value bytes start
+ * with an 8 byte modseq (always set for tombstones, whose value is
+ * only the modseq). */
+#define FC_TOMBSTONE (1<<28)
+#define FC_HASMODSEQ (1<<27)
+#define FC_MODSEQ_LEN ((int)sizeof(MU64))
+
 /* Magic value for no p_cur */
 #define NOPAGE (~(MU32)0)
 
@@ -207,8 +220,8 @@ int mmc_unlock(mmap_cache *);
 int mmc_is_locked(mmap_cache *);
 
 /* Functions for getting/setting/deleting values in current page */
-int mmc_read(mmap_cache *, MU32, void *, int, void **, int *, MU32 *, MU32 *);
-int mmc_write(mmap_cache *, MU32, void *, int, void *, int, MU32, MU32);
+int mmc_read(mmap_cache *, MU32, void *, int, void **, int *, MU32 *, MU32 *, MU64 *);
+int mmc_write(mmap_cache *, MU32, void *, int, void *, int, MU32, MU32, MU64);
 int mmc_delete(mmap_cache *, MU32, void *, int, MU32 *);
 
 /* Functions of expunging values in current page */
@@ -221,7 +234,7 @@ MU32 * mmc_iterate_next(mmap_cache_it *);
 void mmc_iterate_close(mmap_cache_it *);
 
 /* Retrieve details of a cache page/entry */
-void mmc_get_details(mmap_cache *, MU32 *, void **, int *, void **, int *, MU32 *, MU32 *, MU32 *);
+void mmc_get_details(mmap_cache *, MU32 *, void **, int *, void **, int *, MU32 *, MU32 *, MU32 *, MU64 *);
 void mmc_get_page_details(mmap_cache * cache, MU32 * nreads, MU32 * nreadhits);
 void mmc_reset_page_details(mmap_cache * cache);
 

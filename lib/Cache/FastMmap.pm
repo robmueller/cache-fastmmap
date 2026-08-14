@@ -284,6 +284,61 @@ L<www.fastmail.com> and is regarded as extremely stable and reliable.
 Development has in general slowed because there are currently no
 known bugs and no additional needed features at this time.
 
+=head1 TOMBSTONES AND MODSEQS
+
+These features close a stale write-back race in cache invalidation.
+The race: process A reads a value from the cache and is using it when
+an invalidation arrives (some other process changed the underlying
+data and called remove()). If A now stores its in-memory copy back -
+explicitly, or via a read-compute-store pattern that raced the
+invalidation - the out of date value is re-cached, and no further
+invalidation is coming.
+
+The fix is to give changes a monotonically increasing 64 bit sequence
+number (a "modseq") and make invalidation leave a marker instead of
+just deleting:
+
+=over 4
+
+=item *
+
+C<< $fc->remove($Key, { modseq => $ModSeq }) >> deletes the value but
+leaves a B<tombstone> recording the modseq of the invalidating change.
+get()/exists() treat tombstones as misses. A tombstone never has its
+modseq lowered by a remove with an older modseq.
+
+=item *
+
+C<< $fc->set($Key, $Value, { modseq => $ModSeq }) >> is a
+B<conditional store>: it's refused (returning false) if the key holds
+a tombstone with a newer modseq, or a live value with a newer modseq.
+Otherwise the value is stored with its modseq (readable back via
+C<< get($Key, { modseq => \my $ms }) >>).
+
+=item *
+
+A plain set() with no modseq is refused by I<any> tombstone. This is
+what you want for values computed from several underlying sources
+whose modseqs aren't mutually comparable: they can't prove freshness,
+so any pending invalidation blocks re-caching until the tombstone
+expires. The checks happen inside the existing slot lookup in the C
+layer, so none of this costs anything extra per operation.
+
+=back
+
+Tombstones expire like normal entries (see C<tombstone_expire_time>)
+and can be evicted under LRU pressure, in which case behaviour
+degrades to plain delete semantics - so they need only be trusted as
+an optimisation window, sized to cover in-flight requests. A plain
+remove() with no modseq deletes tombstones like any other entry.
+
+Internally a tombstone is an entry flag plus an 8 byte packed modseq
+in the value area, and a live value with a modseq carries it as an 8
+byte prefix, all managed by the C layer - the cache file format is
+unchanged, but older versions of this module will misread I<entries
+that use these features>, so upgrade all processes sharing a cache
+file before writing any.
+
 =head1 METHODS
 
 =over 4
@@ -296,7 +351,7 @@ use strict;
 use warnings;
 use bytes;
 
-our $VERSION = '1.62';
+our $VERSION = '1.63';
 
 require XSLoader;
 XSLoader::load('Cache::FastMmap', $VERSION);
@@ -433,6 +488,14 @@ Maximum time to hold values in the cache in seconds. A value of 0
 means does no explicit expiry time, and values are expired only based
 on LRU usage. Can be expressed as 1m, 1h, 1d for minutes/hours/days
 respectively. (default: 0)
+
+=item * B<tombstone_expire_time>
+
+Default expiry time for tombstones written by remove() with a modseq,
+in the same format as expire_time. Tombstones only need to outlive
+in-flight users of the old value, so this is typically short (e.g.
+'1m'). If 0/unset, tombstones use the cache's default expire_time.
+(default: 0)
 
 =back
 
@@ -676,6 +739,10 @@ sub new {
   # Work out expiry time in seconds
   my $expire_time = $Self->{expire_time} = parse_expire_time($Args{expire_time});
 
+  # Default expiry for tombstones left by remove() with a modseq (see
+  #  TOMBSTONES AND MODSEQS)
+  $Self->{tombstone_expire_time} = parse_expire_time($Args{tombstone_expire_time});
+
   # Function rounds to the nearest power of 2
   sub RoundPow2 { return int(2 ** int(log($_[0])/log(2)) + 0.1); }
 
@@ -772,9 +839,15 @@ I<read_cb> specified and not found, calls the callback to try
 and find the value for the key, and if found (or 'cache_not_found'
 is set), stores it into the cache and returns the found value.
 
-I<%Options> is optional, and is used by get_and_set() to control
-the locking behaviour. For now, you should probably ignore it
-unless you read the code to understand how it works
+Keys holding a tombstone report as not found, and a value found by
+I<read_cb> is returned but not stored back over a tombstone (see
+L</TOMBSTONES AND MODSEQS>).
+
+I<%Options> is optional. Pass C<< modseq => \my $ModSeq >> to receive
+the stored modseq of the value (undef if it was stored without one).
+Other entries are used by get_and_set() to control the locking
+behaviour. For now, you should probably ignore them unless you read
+the code to understand how it works
 
 =cut
 sub get {
@@ -788,10 +861,10 @@ sub get {
   fc_lock($Cache, $HashPage);
   $Locked = 1;
 
-  my ($Val, $Flags, $Found, $ExpireOn);
+  my ($Val, $Flags, $Found, $ExpireOn, $ModSeq);
   my $Err;
   eval {
-    ($Val, $Flags, $Found, $ExpireOn) = fc_read($Cache, $HashSlot, $_[1]);
+    ($Val, $Flags, $Found, $ExpireOn, $ModSeq) = fc_read($Cache, $HashSlot, $_[1]);
 
     # Value not found, check underlying data store
     if (!$Found && (my $read_cb = $Self->{read_cb})) {
@@ -822,6 +895,9 @@ sub get {
         my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
         $Self->_expunge_page(2, 1, $KVLen);
 
+        # A tombstone refuses this store, and rightly so: the value we
+        #  just computed may predate the invalidating change. It's
+        #  still returned to the caller, just not cached
         fc_write($Cache, $HashSlot, $_[1], $Val, -1, 0);
       }
     }
@@ -854,9 +930,18 @@ sub get {
     die $Err;
   }
 
+  # Report the value's stored modseq if the caller asked for it
+  if (my $ModSeqOut = $_[2] && $_[2]->{modseq}) {
+    ref($ModSeqOut) eq 'SCALAR' || die "get modseq option must be a scalar ref";
+    $$ModSeqOut = $ModSeq;
+  }
+
   # If explicitly asked to skip unlocking, return a sentinel so callers
   # using the old 3-tuple unpack still work (slot 2 is now a placeholder).
-  return ($Val, 1, { $Found ? (expire_on => $ExpireOn) : () }) if $SkipUnlock;
+  return ($Val, 1, {
+    $Found ? (expire_on => $ExpireOn) : (),
+    defined $ModSeq ? (modseq => $ModSeq) : (),
+  }) if $SkipUnlock;
 
   return $Val;
 }
@@ -869,10 +954,15 @@ I<%Options> is optional. If it's not a hash reference, it's
 assumed to be an explicit expiry time for the key being set,
 this is to make set() compatible with the Cache::Cache interface
 
-If a hash is passed, the only useful entries right now are expire_on to
-set an explicit expiry time for this entry (epoch seconds), or expire_time
+If a hash is passed, the useful entries are expire_on to
+set an explicit expiry time for this entry (epoch seconds), expire_time
 to set an explicit relative future expiry time for this entry in
-seconds/minutes/days in the same format as passed to the new constructor.
+seconds/minutes/days in the same format as passed to the new constructor,
+or modseq to make this a conditional store (see
+L</TOMBSTONES AND MODSEQS>): the value is stored tagged with the given
+64 bit unsigned modseq, unless the key holds a tombstone or live value
+with a newer modseq, in which case nothing is stored and false is
+returned. A set() without modseq is refused by any tombstone.
 
 Some other options are used internally, such as by get_and_set()
 to control the locking behaviour. For now, you should probably ignore
@@ -897,6 +987,10 @@ sub set {
   # Are we doing writeback's? If so, need to mark as dirty in cache
   my $write_back = $Self->{write_back};
 
+  my $ModSeq = $Opts ? $Opts->{modseq} : undef;
+  !defined($ModSeq) || $ModSeq =~ /^\d+$/
+    or die "set modseq option must be an unsigned integer";
+
   # Hash value, lock page (unless caller already holds the lock)
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
   fc_lock($Cache, $HashPage) unless $Opts && $Opts->{_locked};
@@ -911,20 +1005,26 @@ sub set {
     my $KVLen = length($_[1]) + (defined($Val) ? length($Val) : 0);
     $Self->_expunge_page(2, 1, $KVLen);
 
-    # Now store into cache
-    $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_on, $write_back ? FC_ISDIRTY : 0);
+    # Now store into cache. 1 = stored, 0 = no space, -1 = conditional
+    #  store refused (see TOMBSTONES AND MODSEQS)
+    $DidStore = fc_write($Cache, $HashSlot, $_[1], $Val, $expire_on,
+      $write_back ? FC_ISDIRTY : 0, $ModSeq);
     1;
   } || do {
     $Err = $@ || 'unknown error';
   };
+  my $RefusedStore = $DidStore && $DidStore < 0;
+  $DidStore = $DidStore && $DidStore > 0 ? 1 : 0;
 
   # Always unlock — caller passed _locked to transfer ownership
   fc_unlock($Cache) if fc_is_locked($Cache);
   die $Err if defined $Err;
 
   # If we're doing write-through, or write-back and didn't get into cache,
-  #  write back to the underlying store
-  if ((!$write_back || !$DidStore) && (my $write_cb = $Self->{write_cb})) {
+  #  write back to the underlying store. Not for refused stores: the
+  #  whole point of the refusal is that our value is out of date
+  if (!$RefusedStore
+     && (!$write_back || !$DidStore) && (my $write_cb = $Self->{write_cb})) {
     eval { $write_cb->($Self->{context}, $_[1], $_[2], $expire_on); };
   }
 
@@ -1075,21 +1175,49 @@ sub exists {
 
 Delete the given key from the cache
 
-I<%Options> is optional, and is used by get_and_remove() to control
-the locking behaviour. For now, you should probably ignore it
-unless you read the code to understand how it works
+I<%Options> is optional. Pass C<< modseq => $ModSeq >> to leave a
+tombstone recording the modseq of the invalidating change instead of
+plainly deleting (see L</TOMBSTONES AND MODSEQS>); expire_on or
+expire_time then override the tombstone's expiry (default
+C<tombstone_expire_time>). An existing tombstone with a newer modseq
+is kept. Other entries are used by get_and_remove() to control the
+locking behaviour. For now, you should probably ignore them unless
+you read the code to understand how it works
 
 =cut
 sub remove {
   my ($Self, $Cache) = ($_[0], $_[0]->{Cache});
+  my $Opts = $_[2];
+
+  my $ModSeq = $Opts ? $Opts->{modseq} : undef;
+  !defined($ModSeq) || $ModSeq =~ /^\d+$/
+    or die "remove modseq option must be an unsigned integer";
 
   # Hash value, lock page (unless caller already holds the lock), delete
   my ($HashPage, $HashSlot) = fc_hash($Cache, $_[1]);
-  fc_lock($Cache, $HashPage) unless $_[2] && $_[2]->{_locked};
+  fc_lock($Cache, $HashPage) unless $Opts && $Opts->{_locked};
 
   my ($DidDel, $Flags, $Err);
   eval {
-    ($DidDel, $Flags) = fc_delete($Cache, $HashSlot, $_[1]);
+    if (defined $ModSeq) {
+      # Remove-with-modseq leaves a tombstone recording the invalidating
+      #  change, so conditional stores can refuse stale write-backs.
+      #  The C layer never lowers an existing tombstone's modseq
+      my $expire_on = -1;
+      if ($Opts && defined $Opts->{expire_on}) {
+        $expire_on = $Opts->{expire_on};
+      } elsif ($Opts && defined $Opts->{expire_time}) {
+        $expire_on = parse_expire_time($Opts->{expire_time}, _time());
+      } elsif (my $TombExpire = $Self->{tombstone_expire_time}) {
+        $expire_on = _time() + $TombExpire;
+      }
+
+      $Self->_expunge_page(2, 1, length($_[1]) + 8);
+      $DidDel = fc_tombstone($Cache, $HashSlot, $_[1], $expire_on, $ModSeq);
+      $Flags = 0;
+    } else {
+      ($DidDel, $Flags) = fc_delete($Cache, $HashSlot, $_[1]);
+    }
     1;
   } || do {
     $Err = $@ || 'unknown error';

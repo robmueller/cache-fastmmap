@@ -1,5 +1,24 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.63 Fri Aug 14 2026
+  - Add tombstone and modseq support to close the stale
+    write-back race in cache invalidation: remove() with a
+    modseq leaves a tombstone recording the invalidating
+    change, set() with a modseq is a conditional store that
+    refuses values older than the tombstone or the live
+    entry, plain set()s are refused by any tombstone, and
+    get() can report a value's stored modseq. New
+    tombstone_expire_time constructor option; get_keys()
+    hides tombstones and exposes modseqs. Implemented in the
+    C layer (a flag plus an 8 byte modseq before the value
+    bytes, checked inside the existing slot lookup), so
+    there's no per-operation overhead when unused and no
+    change to the cache file format - but older module
+    versions misread entries that use these features, so
+    upgrade all processes sharing a cache file before
+    writing any. See the TOMBSTONES AND MODSEQS
+    documentation section.
+
 1.62 Sun May 17 2026
   - Fix remaining Perl-side lock leaks when user supplied
     serializer/deserializer code throws while get_and_set()

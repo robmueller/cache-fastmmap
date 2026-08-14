@@ -165,8 +165,10 @@ fc_read(obj, hash_slot, key)
     void * key_ptr, * val_ptr;
     MU32 expire_on = 0;
     MU32 flags = 0;
+    MU64 modseq = 0;
     STRLEN pl_key_len;
     SV * val;
+    SV * modseq_sv;
 
     FC_ENTRY
 
@@ -177,7 +179,9 @@ fc_read(obj, hash_slot, key)
     key_len = (int)pl_key_len;
 
     /* Get value data pointer */
-    found = mmc_read(cache, (MU32)hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags);
+    found = mmc_read(cache, (MU32)hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags, &modseq);
+
+    modseq_sv = &PL_sv_undef;
 
     /* If not found, use undef */
     if (found == -1) {
@@ -199,26 +203,34 @@ fc_read(obj, hash_slot, key)
         }
 
       }
-      flags = flags & ~(FC_UTF8KEY | FC_UTF8VAL | FC_UNDEF);
+
+      if (flags & FC_HASMODSEQ) {
+        modseq_sv = sv_2mortal(newSVuv((UV)modseq));
+      }
+
+      flags = flags & ~(FC_UTF8KEY | FC_UTF8VAL | FC_UNDEF | FC_HASMODSEQ | FC_TOMBSTONE);
     }
 
     XPUSHs(val);
     XPUSHs(sv_2mortal(newSViv((IV)flags)));
     XPUSHs(sv_2mortal(newSViv((IV)!found)));
     XPUSHs(sv_2mortal(newSViv((IV)expire_on)));
+    XPUSHs(modseq_sv);
 
 
 int
-fc_write(obj, hash_slot, key, val, expire_on, in_flags)
+fc_write(obj, hash_slot, key, val, expire_on, in_flags, modseq_sv = &PL_sv_undef)
     SV * obj;
     U32  hash_slot;
     SV * key;
     SV * val;
     U32 expire_on;
     U32 in_flags;
+    SV * modseq_sv;
   INIT:
     int key_len, val_len;
     void * key_ptr, * val_ptr;
+    MU64 modseq = 0;
     STRLEN pl_key_len, pl_val_len;
 
     FC_ENTRY
@@ -228,6 +240,14 @@ fc_write(obj, hash_slot, key, val, expire_on, in_flags)
     /* Get key length, data pointer */
     key_ptr = (void *)SvPV(key, pl_key_len);
     key_len = (int)pl_key_len;
+
+    /* Storing with a modseq? (see TOMBSTONES AND MODSEQS in the pod) */
+    if (SvOK(modseq_sv)) {
+      if (sizeof(UV) < sizeof(MU64))
+        croak("modseq support requires a 64 bit perl");
+      in_flags |= FC_HASMODSEQ;
+      modseq = (MU64)SvUV(modseq_sv);
+    }
 
     /* Check for storing undef, and store empty string with undef flag set */
     if (!SvOK(val)) {
@@ -251,8 +271,46 @@ fc_write(obj, hash_slot, key, val, expire_on, in_flags)
       }
     }
 
-    /* Write value to cache */
-    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU32)expire_on, (MU32)in_flags);
+    /* Write value to cache (1 stored, 0 no space, -1 refused) */
+    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, val_ptr, val_len, (MU32)expire_on, (MU32)in_flags, modseq);
+
+  OUTPUT:
+    RETVAL
+
+int
+fc_tombstone(obj, hash_slot, key, expire_on, modseq_sv)
+    SV * obj;
+    U32  hash_slot;
+    SV * key;
+    U32 expire_on;
+    SV * modseq_sv;
+  INIT:
+    int key_len;
+    void * key_ptr;
+    MU32 in_flags = FC_TOMBSTONE | FC_HASMODSEQ;
+    MU64 modseq;
+    STRLEN pl_key_len;
+
+    FC_ENTRY
+
+  CODE:
+
+    if (sizeof(UV) < sizeof(MU64))
+      croak("modseq support requires a 64 bit perl");
+    if (!SvOK(modseq_sv))
+      croak("fc_tombstone requires a modseq");
+    modseq = (MU64)SvUV(modseq_sv);
+
+    /* Get key length, data pointer */
+    key_ptr = (void *)SvPV(key, pl_key_len);
+    key_len = (int)pl_key_len;
+    if (SvUTF8(key)) {
+      in_flags |= FC_UTF8KEY;
+    }
+
+    /* A tombstone is an empty value with the modseq prefix; mmc_write
+     * enforces never lowering an existing tombstone's modseq */
+    RETVAL = mmc_write(cache, (MU32)hash_slot, key_ptr, key_len, "", 0, (MU32)expire_on, in_flags, modseq);
 
   OUTPUT:
     RETVAL
@@ -334,9 +392,14 @@ fc_expunge(obj, mode, wb, len)
       if (wb) {
 
         for (item = 0; item < num_expunge; item++) {
+          MU64 modseq = 0;
           mmc_get_details(cache, to_expunge[item],
             &key_ptr, &key_len, &val_ptr, &val_len,
-            &last_access, &expire_on, &flags);
+            &last_access, &expire_on, &flags, &modseq);
+
+          /* Tombstones have nothing to write back */
+          if (flags & FC_TOMBSTONE)
+            continue;
 
           {
           HV * ih = (HV *)sv_2mortal((SV *)newHV());
@@ -365,6 +428,10 @@ fc_expunge(obj, mode, wb, len)
           hv_store(ih, "value", 5, val, 0);
           hv_store(ih, "last_access", 11, newSViv((IV)last_access), 0);
           hv_store(ih, "expire_on", 9, newSViv((IV)expire_on), 0);
+          if (flags & FC_HASMODSEQ) {
+            hv_store(ih, "modseq", 6, newSVuv((UV)modseq), 0);
+            flags ^= FC_HASMODSEQ;
+          }
           hv_store(ih, "flags", 5, newSViv((IV)flags), 0);
 
           /* Create reference to hash */
@@ -402,9 +469,14 @@ fc_get_keys(obj, mode)
     /* Iterate over all items */
     while ((entry_ptr = mmc_iterate_next(it))) {
       SV *  key;
+      MU64 modseq = 0;
       mmc_get_details(cache, entry_ptr,
         &key_ptr, &key_len, &val_ptr, &val_len,
-        &last_access, &expire_on, &flags);
+        &last_access, &expire_on, &flags, &modseq);
+
+      /* Tombstones are misses, so hide them */
+      if (flags & FC_TOMBSTONE)
+        continue;
 
       /* Create key SV, and set UTF8'ness if needed */
       key = newSVpvn((const char *)key_ptr, key_len);
@@ -420,6 +492,11 @@ fc_get_keys(obj, mode)
       /* Mode 1/2 is list of hash-refs */
       } else if (mode == 1 || mode == 2) {
         HV * ih = (HV *)sv_2mortal((SV *)newHV());
+
+        if (flags & FC_HASMODSEQ) {
+          hv_store(ih, "modseq", 6, newSVuv((UV)modseq), 0);
+          flags ^= FC_HASMODSEQ;
+        }
 
         /* These things by default */
         hv_store(ih, "key", 3, key, 0);
@@ -462,6 +539,7 @@ fc_get(obj, key)
     int key_len, val_len, found;
     void * key_ptr, * val_ptr;
     MU32 hash_page, hash_slot, expire_on, flags;
+    MU64 modseq = 0;
     STRLEN pl_key_len;
     SV * val;
 
@@ -480,7 +558,7 @@ fc_get(obj, key)
     mmc_lock(cache, hash_page);
 
     /* Get value data pointer */
-    found = mmc_read(cache, hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags);
+    found = mmc_read(cache, hash_slot, key_ptr, key_len, &val_ptr, &val_len, &expire_on, &flags, &modseq);
 
     /* If not found, use undef */
     if (found == -1) {
@@ -527,7 +605,7 @@ fc_set(obj, key, val)
     mmc_lock(cache, hash_page);
 
     /* Get value data pointer */
-    mmc_write(cache, hash_slot, key_ptr, key_len, val_ptr, val_len, -1, flags);
+    mmc_write(cache, hash_slot, key_ptr, key_len, val_ptr, val_len, -1, flags, 0);
 
     mmc_unlock(cache);
 
