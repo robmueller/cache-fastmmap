@@ -1,5 +1,26 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.64 Thu Sep 17 2026
+  - Survive a process killed mid-update. The page start marker
+    now doubles as an in-progress flag: cleared (low bit) before
+    a page's structure is changed, set again before unlock. A
+    process that locks a page and finds the flag still clear
+    knows the previous holder died holding the lock, and
+    reinitialises the page instead of trusting it. Slot offsets
+    and entry lengths are bounds-checked wherever they are
+    followed, so a corrupt page is a miss plus a repair at
+    unlock, not a segfault. Repairs are reported with warn();
+    new repaired_pages() method. No file format change: the two
+    marker values are the old magic and old-magic-minus-one, so
+    older versions see a mid-update page as "magic not found"
+    rather than misreading it. init_file is no longer needed
+    for safety. See KILLED WRITERS AND PAGE REPAIR.
+  - Tightened the page header sanity checks at lock time
+    (slot table and free data must fit inside the page) and
+    repair rather than fail a page that doesn't pass them.
+  - mmc_do_expunge no longer leaks its buffers when the
+    underlying fd check fails.
+
 1.63 Fri Aug 14 2026
   - Add tombstone and modseq support to close the stale
     write-back race in cache invalidation: remove() with a
