@@ -75,6 +75,23 @@ fc_init(obj)
     if (RETVAL != 0) {
       croak("%s", mmc_error(cache));
     }
+    if (mmc_get_param(cache, "repaired_pages") > 0) {
+      warn("Cache::FastMmap: %d page(s) reinitialised on open, last: %s",
+        mmc_get_param(cache, "repaired_pages"), mmc_error(cache));
+    }
+
+
+int
+fc_get_param(obj, param)
+    SV * obj;
+    char * param;
+  INIT:
+    FC_ENTRY
+
+  CODE:
+    RETVAL = mmc_get_param(cache, param);
+  OUTPUT:
+    RETVAL
 
 
 void
@@ -126,6 +143,9 @@ fc_lock(obj, page);
     if (RETVAL != 0) {
       croak("%s", mmc_error(cache));
     }
+    if (mmc_page_repaired(cache)) {
+      warn("Cache::FastMmap: %s", mmc_error(cache));
+    }
 
 
 NO_OUTPUT int
@@ -139,6 +159,9 @@ fc_unlock(obj);
   POSTCALL:
     if (RETVAL != 0) {
       croak("%s", mmc_error(cache));
+    }
+    if (mmc_page_repaired(cache)) {
+      warn("Cache::FastMmap: %s", mmc_error(cache));
     }
 
 int
@@ -459,11 +482,13 @@ fc_get_keys(obj, mode)
     void * key_ptr, * val_ptr;
     int key_len, val_len;
     MU32 last_access, expire_on, flags;
+    int repaired_before;
 
     FC_ENTRY
 
   PPCODE:
 
+    repaired_before = mmc_get_param(cache, "repaired_pages");
     it = mmc_iterate_new(cache);
 
     /* Iterate over all items */
@@ -526,6 +551,12 @@ fc_get_keys(obj, mode)
     }
 
     mmc_iterate_close(it);
+
+    /* Pages are locked and unlocked inside the iterator, so a repair
+     * there isn't seen by fc_lock/fc_unlock; report it here */
+    if (mmc_get_param(cache, "repaired_pages") > repaired_before) {
+      warn("Cache::FastMmap: %s", mmc_error(cache));
+    }
 
 
 

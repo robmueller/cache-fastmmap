@@ -210,6 +210,7 @@ mmap_cache * mmc_new();
 int mmc_init(mmap_cache *);
 int mmc_set_param(mmap_cache *, char *, char *);
 int mmc_get_param(mmap_cache *, char *);
+int mmc_page_repaired(mmap_cache *);
 int mmc_close(mmap_cache *);
 char * mmc_error(mmap_cache *);
 
@@ -241,6 +242,9 @@ void mmc_reset_page_details(mmap_cache * cache);
 /* Internal functions */
 int _mmc_set_error(mmap_cache *, int, char *, ...);
 void _mmc_init_page(mmap_cache *, MU32);
+void _mmc_repair_page(mmap_cache *, MU32, char *);
+void _mmc_mark_dirty(mmap_cache *);
+int _mmc_check_entry(mmap_cache *, MU32);
 
 MU32 * _mmc_find_slot(mmap_cache * , MU32 , void *, int, int );
 void _mmc_delete_slot(mmap_cache * , MU32 *);

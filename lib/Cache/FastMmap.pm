@@ -258,12 +258,11 @@ UNIX as Win32 has no concept of forking)
 
 Explicitly connect up in each forked child to the share file. In this
 case, make sure the file already exists and the children connect with
-init_file => 0 to avoid deleting the cache contents and possible
-race corruption conditions. Also be careful that multiple children
-may race to create the file at the same time, each overwriting and
-corrupting content. Use a separate lock file if you must to ensure
-only one child creates the file. (This is the only possible way under
-Win32)
+init_file => 0 to avoid deleting the cache contents. Also be careful
+that multiple children may race to create the file at the same time,
+each overwriting and corrupting content. Use a separate lock file if
+you must to ensure only one child creates the file. (This is the only
+possible way under Win32)
 
 =back
 
@@ -283,6 +282,45 @@ Cache::FastMmap is being used in an extensive number of systems at
 L<www.fastmail.com> and is regarded as extremely stable and reliable.
 Development has in general slowed because there are currently no
 known bugs and no additional needed features at this time.
+
+=head1 KILLED WRITERS AND PAGE REPAIR
+
+Every update to a page (set, remove, expunge, and the header write at
+unlock) happens while the process holds that page's fcntl lock, but
+the update itself is a series of ordinary stores into the mmap'ed
+file, so a process killed with SIGKILL (or dying of a segfault, or
+losing power to the box, if the file isn't on tmpfs) part way through
+leaves the page structurally inconsistent. The kernel releases its
+lock, the next process to lock the page trusts what it finds, and with
+bad slot offsets or lengths that used to mean a crash.
+
+Since 1.64 the page's start marker doubles as an in-progress flag. A
+process clears the marker's low bit before it changes any structure on
+the page and sets it again just before unlocking. A process that
+acquires the lock and finds the bit still clear knows the previous
+holder died mid-update; it reinitialises the page (all entries on it
+are lost, which for a cache is a miss) and carries on. Slot offsets
+and entry lengths are also checked against the page bounds whenever
+they are followed, and a page that fails is treated as a miss and
+reinitialised at unlock, so a page corrupted by something else (an
+older module version killed mid-update, say) can't crash the process
+either.
+
+Each repair is reported with C<warn>, naming the page, the file and
+the reason, so it can be logged and looked into; C<repaired_pages()>
+gives the count for this process. Repairs should be rare. If they are
+not, something is killing processes while they hold a page lock, and
+that, rather than the cache, is what needs fixing.
+
+The marker's two values are the old magic value and one differing in
+the low bit, so files are compatible in both directions. An older
+module version that locks a page a 1.64 process is mid-update on (only
+possible if that process was killed) fails with "magic page start
+marker not found" instead of reading the inconsistent page, which is
+the safer outcome; a 1.64 process finds and repairs a page an older
+version was killed on if a bounds check catches it, but a header
+inconsistency left by an older version is only caught by the header
+checks at lock time.
 
 =head1 TOMBSTONES AND MODSEQS
 
@@ -389,10 +427,12 @@ Clear any existing values and re-initialise file. Useful to do in a
 parent that forks off children to ensure that file is empty at the start
 (default: 0)
 
-B<Note:> This is quite important to do in the parent to ensure a
-consistent file structure. The shared file is not perfectly transaction
-safe, and so if a child is killed at the wrong instant, it might leave
-the cache file in an inconsistent state.
+B<Note:> Since 1.64 a page left half-updated by a killed process is
+detected and reinitialised by the next process to lock it (see
+L</KILLED WRITERS AND PAGE REPAIR>), so init_file is no longer needed
+for safety, only when you want to start from an empty cache. Before
+1.64 a killed writer could leave the file in a state that crashed
+later readers, and init_file in the parent was the only protection.
 
 =item * B<serializer>
 
@@ -1334,6 +1374,17 @@ written back to the underlying store as well.
 sub empty {
   my $Self = shift;
   $Self->_expunge_all($_[0] ? 0 : 1, 1);
+}
+
+=item I<repaired_pages()>
+
+Number of pages this process has found unusable and reinitialised
+since it opened the cache (see L</KILLED WRITERS AND PAGE REPAIR>).
+
+=cut
+sub repaired_pages {
+  my $Self = shift;
+  return fc_get_param($Self->{Cache}, 'repaired_pages');
 }
 
 =item I<get_keys($Mode)>

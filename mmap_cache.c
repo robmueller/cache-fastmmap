@@ -100,6 +100,14 @@ int mmc_get_param(mmap_cache * cache, char * param) {
     return (int)cache->c_num_pages;
   } else if (!strcmp(param, "expire_time")) {
     return (int)cache->expire_time;
+  } else if (!strcmp(param, "repaired_pages")) {
+    return (int)cache->repaired_pages;
+  } else if (!strcmp(param, "debug")) {
+#ifdef DEBUG
+    return 1;
+#else
+    return 0;
+#endif
   } else {
     return _mmc_set_error(cache, 0, "Bad set_param parameter: %s", param);
   }
@@ -227,6 +235,17 @@ int mmc_close(mmap_cache *cache) {
   return 0;
 }
 
+/*
+ * int mmc_page_repaired(mmap_cache * cache)
+ *
+ * True if the most recent mmc_lock or mmc_unlock reinitialised a page.
+ * mmc_error() then describes why. Cleared by the next mmc_lock.
+ *
+*/
+int mmc_page_repaired(mmap_cache * cache) {
+  return cache->page_repaired;
+}
+
 char * mmc_error(mmap_cache * cache) {
   if (cache->last_error)
     return cache->last_error;
@@ -263,7 +282,17 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   res = mmc_lock_page(cache, p_offset);
   if (res) return res;
 
-  if (!(P_Magic(p_ptr) == 0x92f7e3b1)) {
+  cache->page_repaired = 0;
+  cache->p_dirty = 0;
+  cache->p_corrupt = 0;
+
+  /* A dirty marker means whoever last held this page died (or was
+   * killed) part way through changing it; the lock has passed to us,
+   * but the page's structure can't be trusted, so start it afresh */
+  if (P_Magic(p_ptr) == P_MAGIC_DIRTY) {
+    _mmc_repair_page(cache, p_cur, "left dirty by a killed writer");
+
+  } else if (P_Magic(p_ptr) != P_MAGIC) {
     mmc_unlock_page(cache, p_offset);
     return _mmc_set_error(cache, 0, "magic page start marker not found. p_cur is %u, offset is %llu", p_cur, p_offset);
   }
@@ -278,22 +307,37 @@ int mmc_lock(mmap_cache * cache, MU32 p_cur) {
   cache->p_n_read_hits = P_NReadHits(p_ptr);
 
   /* Reality check. Pages start with start_slots and only ever grow via
-   * expunge, so num_slots should never be below the configured start_slots. */
-  if (cache->p_num_slots < cache->start_slots || cache->p_num_slots > cache->c_page_size)
-    res = _mmc_set_error(cache, 0, "cache num_slots mistmatch");
+   * expunge, so num_slots should never be below the configured
+   * start_slots, and the slot table, then the data, must fit in the
+   * page. A header that fails these was corrupted by something that
+   * predates the dirty marker (an older module version killed
+   * mid-update, say); the page is unusable as it is, so it is
+   * reinitialised like a dirty one rather than failing every access
+   * to it until someone recreates the file. */
+  if (cache->p_num_slots < cache->start_slots ||
+      P_HEADERSIZE + (MU64)cache->p_num_slots * 4 > cache->c_page_size)
+    res = _mmc_set_error(cache, 0, "cache num_slots mismatch");
   else if (cache->p_free_slots > cache->p_num_slots)
-    res = _mmc_set_error(cache, 0, "cache free slots mustmatch");
+    res = _mmc_set_error(cache, 0, "cache free slots mismatch");
   else if (cache->p_old_slots > cache->p_free_slots)
-    res = _mmc_set_error(cache, 0, "cache old slots mistmatch");
-  else if (cache->p_free_data + cache->p_free_bytes != cache->c_page_size)
-    res = _mmc_set_error(cache, 0, "cache free data mistmatch");
+    res = _mmc_set_error(cache, 0, "cache old slots mismatch");
+  else if (cache->p_free_data < P_HEADERSIZE + cache->p_num_slots * 4 ||
+           cache->p_free_data > cache->c_page_size ||
+           cache->p_free_data + cache->p_free_bytes != cache->c_page_size)
+    res = _mmc_set_error(cache, 0, "cache free data mismatch");
   if (res) {
-    mmc_unlock_page(cache, p_offset);
-    return res;
+    _mmc_repair_page(cache, p_cur, cache->last_error);
+    cache->p_num_slots = P_NumSlots(p_ptr);
+    cache->p_free_slots = P_FreeSlots(p_ptr);
+    cache->p_old_slots = P_OldSlots(p_ptr);
+    cache->p_free_data = P_FreeData(p_ptr);
+    cache->p_free_bytes = P_FreeBytes(p_ptr);
+    cache->p_n_reads = P_NReads(p_ptr);
+    cache->p_n_read_hits = P_NReadHits(p_ptr);
   }
 
   /* Check page header */
-  ASSERT(P_Magic(p_ptr) == 0x92f7e3b1);
+  ASSERT(P_Magic(p_ptr) == P_MAGIC);
   ASSERT(P_NumSlots(p_ptr) >= cache->start_slots && P_NumSlots(p_ptr) < cache->c_page_size);
   ASSERT(P_FreeSlots(p_ptr) <= P_NumSlots(p_ptr));
   ASSERT(P_OldSlots(p_ptr) <= P_FreeSlots(p_ptr));
@@ -322,9 +366,24 @@ int mmc_unlock(mmap_cache * cache) {
 
   ASSERT(cache->p_cur != NOPAGE);
 
+  /* A repair at lock time has been reported by now */
+  cache->page_repaired = 0;
+
+  /* A structural check failed during this lock. The page can't be
+   * saved back; start it afresh instead (the operation that found the
+   * problem has already reported a miss or a failed store) */
+  if (cache->p_corrupt) {
+    _mmc_repair_page(cache, cache->p_cur, cache->last_error);
+    cache->p_changed = 0;
+    cache->p_corrupt = 0;
+
   /* If changed, save page header changes back */
-  if (cache->p_changed) {
+  } else if (cache->p_changed) {
     void * p_ptr = cache->p_base;
+
+    /* The header fields are updated one at a time, so cover them with
+     * the marker like any other structural change */
+    _mmc_mark_dirty(cache);
 
     /* Save any changed information back to page */
     P_NumSlots(p_ptr) = cache->p_num_slots;
@@ -340,6 +399,12 @@ int mmc_unlock(mmap_cache * cache) {
 
   /* Test before unlocking */
   ASSERT(_mmc_test_page(cache));
+
+  /* Structure is complete again; clear the marker before letting go */
+  if (cache->p_dirty) {
+    P_SetMagic(cache->p_base, P_MAGIC);
+    cache->p_dirty = 0;
+  }
 
   mmc_unlock_page(cache, cache->p_offset);
 
@@ -559,6 +624,8 @@ int mmc_write(
     MU32 * base_det;
     MU32 now;
 
+    _mmc_mark_dirty(cache);
+
     /* If found, delete the existing slot before reusing it for the new value */
     if (*slot_ptr > 1) {
       _mmc_delete_slot(cache, slot_ptr);
@@ -722,6 +789,15 @@ int mmc_calc_expunge(
         continue;
       }
 
+      /* Nothing on a page we can't walk safely is worth keeping or
+       * writing back; it is reinitialised at unlock */
+      if (!_mmc_check_entry(cache, data_offset)) {
+        free(copy_base_det);
+        *to_expunge = 0;
+        *new_num_slots = num_slots;
+        return 0;
+      }
+
       /* Definitely out if mode == 1 which means expunge all */
       if (mode == 1) {
         *copy_base_det_out++ = base_det;
@@ -827,6 +903,8 @@ int mmc_do_expunge(
     free(to_expunge);
     return 0;
   }
+
+  _mmc_mark_dirty(cache);
 
   /* Start all new slots empty */
   memset(new_slot_data, 0, slot_data_size);
@@ -999,6 +1077,13 @@ MU32 * mmc_iterate_next(mmap_cache_it * it) {
       continue;
     }
 
+    /* Can't walk a page with bad offsets; skip the rest of it (it is
+     * reinitialised at unlock) */
+    if (!_mmc_check_entry(cache, *slot_ptr)) {
+      slot_ptr = it->slot_ptr_end;
+      continue;
+    }
+
     /* Get pointer to details for this entry */
     base_det = S_Ptr(cache->p_base, *slot_ptr);
 
@@ -1092,6 +1177,8 @@ void _mmc_delete_slot(
   ASSERT(*slot_ptr > 1);
   ASSERT(cache->p_cur != NOPAGE);
 
+  _mmc_mark_dirty(cache);
+
   /* Set offset to 1 */
   *slot_ptr = 1;
 
@@ -1154,11 +1241,20 @@ MU32 * _mmc_find_slot(
     if (data_offset == 1) {
 
     } else {
+      MU32 * base_det;
+      MU32 fkey_len;
+
+      /* A bad offset or length here would send us reading outside
+       * the page. Treat it as not found; the page is reinitialised
+       * when it's unlocked */
+      if (!_mmc_check_entry(cache, data_offset))
+        return (MU32 *)0;
+
       /* Offset is from start of data area */
-      MU32 * base_det = S_Ptr(cache->p_base, data_offset);
+      base_det = S_Ptr(cache->p_base, data_offset);
 
       /* Two longs are key len and data len */
-      MU32 fkey_len = S_KeyLen(base_det);
+      fkey_len = S_KeyLen(base_det);
 
       /* Key matches? */
       if (fkey_len == (MU32)key_len && !memcmp(key_ptr, S_KeyPtr(base_det), key_len)) {
@@ -1194,11 +1290,12 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
   MU64 p_offset = (MU64)p_cur * cache->c_page_size;
   void * p_ptr = PTR_ADD(cache->mm_var, p_offset);
 
-  /* Initialise to all 0's */
+  /* Initialise to all 0's, then mark dirty until the header is complete
+   * so a death in here leaves a page the next locker knows to redo */
   memset(p_ptr, 0, cache->c_page_size);
+  P_SetMagic(p_ptr, P_MAGIC_DIRTY);
 
   /* Setup header */
-  P_Magic(p_ptr) = 0x92f7e3b1;
   P_NumSlots(p_ptr) = cache->start_slots;
   P_FreeSlots(p_ptr) = cache->start_slots;
   P_OldSlots(p_ptr) = 0;
@@ -1207,6 +1304,78 @@ void _mmc_init_page(mmap_cache * cache, MU32 p_cur) {
   P_NReads(p_ptr) = 0;
   P_NReadHits(p_ptr) = 0;
 
+  P_SetMagic(p_ptr, P_MAGIC);
+}
+
+/*
+ * void _mmc_repair_page(mmap_cache * cache, MU32 p_cur, char * why)
+ *
+ * Reinitialise a page found in a state we can't use (dirty marker left
+ * by a killed writer, or a failed structure check) and record that we
+ * did, so the caller can report it. Expects the page to be locked.
+ *
+*/
+void _mmc_repair_page(mmap_cache * cache, MU32 p_cur, char * why) {
+  char reason[256];
+
+  /* why may point at last_error, which _mmc_set_error is about to
+   * replace */
+  strncpy(reason, why ? why : "unknown", sizeof(reason) - 1);
+  reason[sizeof(reason) - 1] = 0;
+
+  _mmc_init_page(cache, p_cur);
+  cache->p_dirty = 0;
+  cache->repaired_pages++;
+  cache->page_repaired = 1;
+  _mmc_set_error(cache, 0, "page %u of %s reinitialised: %s", p_cur, cache->share_file, reason);
+}
+
+/*
+ * void _mmc_mark_dirty(mmap_cache * cache)
+ *
+ * Flag the current locked page as mid-update, before its structure is
+ * changed. Cleared again by mmc_unlock.
+ *
+*/
+void _mmc_mark_dirty(mmap_cache * cache) {
+  ASSERT(cache->p_cur != NOPAGE);
+  if (cache->p_dirty)
+    return;
+  P_SetMagic(cache->p_base, P_MAGIC_DIRTY);
+  cache->p_dirty = 1;
+}
+
+/*
+ * int _mmc_check_entry(mmap_cache * cache, MU32 data_offset)
+ *
+ * Check a used slot's data offset and the entry header it points at
+ * lie within the current page, so following them can't read outside
+ * it. Returns 1 if so. If not, the page is flagged corrupt (mmc_unlock
+ * reinitialises it) and 0 is returned; the caller should give up on
+ * the page.
+ *
+*/
+int _mmc_check_entry(mmap_cache * cache, MU32 data_offset) {
+  MU32 slots_end = P_HEADERSIZE + cache->p_num_slots * 4;
+  MU32 * base_det;
+  MU64 kvlen;
+
+  if (data_offset < slots_end || (data_offset & 3) ||
+      (MU64)data_offset + sizeof(MU32) * 6 > cache->c_page_size) {
+    cache->p_corrupt = 1;
+    _mmc_set_error(cache, 0, "slot data offset %u outside page", data_offset);
+    return 0;
+  }
+
+  base_det = S_Ptr(cache->p_base, data_offset);
+  kvlen = sizeof(MU32) * 6 + (MU64)S_KeyLen(base_det) + (MU64)S_ValLen(base_det);
+  if ((MU64)data_offset + kvlen > cache->c_page_size) {
+    cache->p_corrupt = 1;
+    _mmc_set_error(cache, 0, "entry at offset %u runs past end of page", data_offset);
+    return 0;
+  }
+
+  return 1;
 }
 
 /*

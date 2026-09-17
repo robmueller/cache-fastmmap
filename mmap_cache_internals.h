@@ -30,6 +30,17 @@ struct mmap_cache {
   MU32    p_n_read_hits;
 
   int    p_changed;
+  /* Current page's magic has been switched to P_MAGIC_DIRTY for an
+   * in-progress update; mmc_unlock switches it back */
+  int    p_dirty;
+  /* Current page's structure failed a check; mmc_unlock reinitialises
+   * it instead of saving the header back */
+  int    p_corrupt;
+  /* Set by mmc_lock/mmc_unlock when they reinitialised a page, so the
+   * caller can report it. Cleared at the start of the next mmc_lock */
+  int    page_repaired;
+  /* Total pages reinitialised by this process since open */
+  MU32   repaired_pages;
 
   /* General page details */
   MU32    c_num_pages;
@@ -83,6 +94,25 @@ struct mmap_cache_it {
 #define P_NReadHits(p) (*(PP(p)+7))
 
 #define P_HEADERSIZE 32
+
+/* Page start marker. The low bit is cleared while a process holds the
+ * page locked and is changing its structure, and set again before it
+ * unlocks. A page found with P_MAGIC_DIRTY after acquiring the lock was
+ * left mid-update by a process that died holding it (fcntl locks die
+ * with their owner), so its contents can't be trusted and it is
+ * reinitialised. Any other value means this isn't a page of ours. */
+#define P_MAGIC        0x92f7e3b1
+#define P_MAGIC_DIRTY  0x92f7e3b0
+
+/* Make the store ordering visible to another process that later takes
+ * the page lock, so the marker is written before the structure changes
+ * it covers and cleared only after they are complete */
+#if defined(__GNUC__) || defined(__clang__)
+#define MMC_BARRIER() __sync_synchronize()
+#else
+#define MMC_BARRIER()
+#endif
+#define P_SetMagic(p, m) do { MMC_BARRIER(); *(volatile MU32 *)(p) = (m); MMC_BARRIER(); } while (0)
 
 /* Macros to access cache slot entries */
 #define SP(s) ((MU32 *)s)
