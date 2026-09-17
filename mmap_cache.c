@@ -821,8 +821,12 @@ int mmc_do_expunge(
   MU32 new_offset = 0;
 
   /* Sanity check underlying fd is still the same file */
-  if (!mmc_check_fh(cache))
+  if (!mmc_check_fh(cache)) {
+    free(new_kv_data);
+    free(new_slot_data);
+    free(to_expunge);
     return 0;
+  }
 
   /* Start all new slots empty */
   memset(new_slot_data, 0, slot_data_size);
