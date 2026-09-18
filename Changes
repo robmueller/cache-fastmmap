@@ -1,5 +1,9 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.65 Fri Sep 18 2026
+  - Add t/26.t to MANIFEST.
+    Thanks to https://metacpan.org/author/WOLFSAGE
+
 1.64 Thu Sep 17 2026
   - Survive a process killed mid-update. The page start marker
     now doubles as an in-progress flag: cleared (low bit) before
