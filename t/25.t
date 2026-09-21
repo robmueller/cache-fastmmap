@@ -4,8 +4,17 @@
 # Tombstone and modseq support: conditional stores, tombstoned removes,
 # and the stale write-back race they exist to close
 
-use Test::More tests => 56;
-BEGIN { use_ok('Cache::FastMmap') };
+use Test::More;
+use Config;
+BEGIN {
+  # A modseq is a 64 bit value carried in a UV; the module croaks on
+  # any attempt to use one where UVs are smaller
+  if ($Config{uvsize} < 8) {
+    plan skip_all => 'modseq support requires a 64 bit perl';
+  }
+  plan tests => 56;
+  use_ok('Cache::FastMmap');
+}
 use strict;
 
 #########################
