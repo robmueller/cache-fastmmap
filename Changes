@@ -1,5 +1,14 @@
 Revision history for Perl extension Cache::FastMmap.
 
+1.66 Sun Sep 20 2026
+  - Test fixes only, from cpantesters reports on 1.65:
+    t/26.t forks, so skip it on Windows; it also damaged pages
+    by writing the share file while it was mmapped, which
+    OpenBSD doesn't keep coherent with the mapping, so it now
+    does the damage through new fc_peek/fc_poke test helpers on
+    the mapping itself; t/25.t skips on perls without 64 bit
+    UVs, since modseq support croaks there by design.
+
 1.65 Fri Sep 18 2026
   - Add t/26.t to MANIFEST.
     Thanks to https://metacpan.org/author/WOLFSAGE
