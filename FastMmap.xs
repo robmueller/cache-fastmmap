@@ -641,6 +641,34 @@ fc_set(obj, key, val)
     mmc_unlock(cache);
 
 
+UV
+fc_peek(obj, offset)
+    SV * obj;
+    UV offset;
+  INIT:
+    MU32 val;
+    FC_ENTRY
+
+  CODE:
+    if (mmc_peek(cache, (MU64)offset, &val) != 0)
+      croak("%s", mmc_error(cache));
+    RETVAL = (UV)val;
+  OUTPUT:
+    RETVAL
+
+NO_OUTPUT void
+fc_poke(obj, offset, val)
+    SV * obj;
+    UV offset;
+    UV val;
+  INIT:
+    FC_ENTRY
+
+  CODE:
+    if (mmc_poke(cache, (MU64)offset, (MU32)val) != 0)
+      croak("%s", mmc_error(cache));
+
+
 NO_OUTPUT void
 fc_dump_page(obj);
     SV * obj;

@@ -246,6 +246,31 @@ int mmc_page_repaired(mmap_cache * cache) {
   return cache->page_repaired;
 }
 
+/*
+ * int mmc_peek(mmap_cache * cache, MU64 offset, MU32 * val)
+ * int mmc_poke(mmap_cache * cache, MU64 offset, MU32 val)
+ *
+ * Read or write one MU32 at a byte offset into the mapping, with no
+ * locking or checking beyond the mapping's bounds. For tests, which use
+ * them to damage a page deliberately; going through the mapping rather
+ * than the file keeps them independent of whether the platform keeps
+ * mmap and file I/O coherent (OpenBSD doesn't without msync).
+ *
+*/
+int mmc_peek(mmap_cache * cache, MU64 offset, MU32 * val) {
+  if ((offset & 3) || offset + sizeof(MU32) > cache->c_size)
+    return _mmc_set_error(cache, 0, "peek offset %llu outside mapping", offset);
+  *val = *(MU32 *)PTR_ADD(cache->mm_var, offset);
+  return 0;
+}
+
+int mmc_poke(mmap_cache * cache, MU64 offset, MU32 val) {
+  if ((offset & 3) || offset + sizeof(MU32) > cache->c_size)
+    return _mmc_set_error(cache, 0, "poke offset %llu outside mapping", offset);
+  *(MU32 *)PTR_ADD(cache->mm_var, offset) = val;
+  return 0;
+}
+
 char * mmc_error(mmap_cache * cache) {
   if (cache->last_error)
     return cache->last_error;

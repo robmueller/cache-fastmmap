@@ -211,6 +211,8 @@ int mmc_init(mmap_cache *);
 int mmc_set_param(mmap_cache *, char *, char *);
 int mmc_get_param(mmap_cache *, char *);
 int mmc_page_repaired(mmap_cache *);
+int mmc_peek(mmap_cache *, MU64, MU32 *);
+int mmc_poke(mmap_cache *, MU64, MU32);
 int mmc_close(mmap_cache *);
 char * mmc_error(mmap_cache *);
 

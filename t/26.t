@@ -96,26 +96,33 @@ is(scalar(@Warns), 1, "no further warnings");
 
 # --- A slot pointing outside the page
 
+# Damage is done through the cache's own mapping (fc_peek/fc_poke) rather
+# than by writing the file: not every platform keeps mmap and file I/O
+# coherent without msync, and this test isn't about that.
+sub peek { Cache::FastMmap::fc_peek($FC->{Cache}, $_[0]) }
+sub poke { Cache::FastMmap::fc_poke($FC->{Cache}, $_[0], $_[1]) }
+
+# Offsets of the used slots on a page, and each slot's data offset
+sub used_slots {
+  my ($Page) = @_;
+  my $PageStart = $Page * $Args{page_size};
+  my $Magic = peek($PageStart);
+  die sprintf("bad magic %x", $Magic) unless $Magic == 0x92f7e3b1;
+  my $NumSlots = peek($PageStart + 4);
+  my @Used;
+  for my $i (0 .. $NumSlots - 1) {
+    my $Off = peek($PageStart + 32 + $i * 4);
+    push @Used, [ $PageStart + 32 + $i * 4, $Off ] if $Off > 1;
+  }
+  return @Used;
+}
+
 # Point every used slot on a page at the given offset. Lookups only
 # follow the slots they probe, so one bad slot might never be seen;
 # all of them means the first probe finds it.
 sub corrupt_slot {
   my ($Page, $NewOffset) = @_;
-  open(my $fh, '+<', $File) or die "open $File: $!";
-  binmode $fh;
-  my $PageStart = $Page * $Args{page_size};
-  seek($fh, $PageStart, 0);
-  read($fh, my $Header, 32);
-  my ($Magic, $NumSlots) = unpack("LL", $Header);
-  die sprintf("bad magic %x", $Magic) unless $Magic == 0x92f7e3b1;
-  seek($fh, $PageStart + 32, 0);
-  read($fh, my $Slots, $NumSlots * 4);
-  my @Slots = unpack("L*", $Slots);
-  for my $i (grep { $Slots[$_] > 1 } 0 .. $#Slots) {
-    seek($fh, $PageStart + 32 + $i * 4, 0);
-    print $fh pack("L", $NewOffset);
-  }
-  close $fh;
+  poke($_->[0], $NewOffset) for used_slots($Page);
 }
 
 my $BadPage = $OtherPage;
@@ -151,28 +158,19 @@ is($FC->repaired_pages, 3, "third repair counted");
 $FC->set("lenkey2", "y" x 100);
 my ($LenPage2) = Cache::FastMmap::fc_hash($FC->{Cache}, "lenkey2");
 {
-  # Overwrite the value length of lenkey2's entry with something huge
-  open(my $fh, '+<', $File) or die "open $File: $!";
-  binmode $fh;
+  # Overwrite the value length of lenkey2's entry with something huge.
+  # Entry layout: 4 words of metadata, key len, value len, then the key.
   my $PageStart = $LenPage2 * $Args{page_size};
-  seek($fh, $PageStart, 0);
-  read($fh, my $Header, 32);
-  my (undef, $NumSlots) = unpack("LL", $Header);
-  seek($fh, $PageStart + 32, 0);
-  read($fh, my $Slots, $NumSlots * 4);
   my $Found = 0;
-  for my $Off (grep { $_ > 1 } unpack("L*", $Slots)) {
-    seek($fh, $PageStart + $Off + 16, 0);
-    read($fh, my $Lens, 8);
-    my ($KeyLen) = unpack("LL", $Lens);
-    seek($fh, $PageStart + $Off + 24, 0);
-    read($fh, my $Key, $KeyLen);
+  for my $Slot (used_slots($LenPage2)) {
+    my $Entry = $PageStart + $Slot->[1];
+    my $KeyLen = peek($Entry + 16);
+    next unless $KeyLen == length("lenkey2");
+    my $Key = substr(pack("L*", map { peek($Entry + 24 + $_ * 4) } 0 .. 1), 0, $KeyLen);
     next unless $Key eq "lenkey2";
-    seek($fh, $PageStart + $Off + 20, 0);
-    print $fh pack("L", 0x7fffffff);
+    poke($Entry + 20, 0x7fffffff);
     $Found = 1;
   }
-  close $fh;
   die "lenkey2 not found on its page" unless $Found;
 }
 ok(!defined $FC->get("lenkey2"), "entry with a bad length is a miss");
