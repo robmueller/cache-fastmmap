@@ -8,6 +8,11 @@
 
 use Test::More;
 BEGIN {
+  # The killed-writer cases fork, and perl's fork on Windows is thread
+  # emulation, which Cache::FastMmap refuses
+  if ($^O eq 'MSWin32') {
+    plan skip_all => 'fork tests not supported on Windows';
+  }
   require Cache::FastMmap;
   # A -DDEBUG build asserts on any structural inconsistency, which is
   # what this test deliberately creates
